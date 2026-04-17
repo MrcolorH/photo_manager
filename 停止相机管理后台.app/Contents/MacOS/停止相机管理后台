@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# 智能检测项目根目录
+# 策略1: 检查 .app 是否在项目根目录中
+APP_CONTENTS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+APP_DIR="$(cd "$APP_CONTENTS_DIR/.." && pwd)"
+POTENTIAL_PROJECT_ROOT="$APP_DIR"
+
+# 检查 stop.sh 是否在 .app 的父目录
+if [ -f "$POTENTIAL_PROJECT_ROOT/stop.sh" ]; then
+    SCRIPT_PATH="$POTENTIAL_PROJECT_ROOT"
+else
+    # 策略2: 使用硬编码的默认路径（作为后备）
+    DEFAULT_PATH="/Users/colorh/Project/Node后端/相机管理后台"
+    if [ -f "$DEFAULT_PATH/stop.sh" ]; then
+        SCRIPT_PATH="$DEFAULT_PATH"
+    else
+        # 策略3: 让用户选择
+        SELECTED_PATH=$(osascript <<'EOF'
+tell application "System Events"
+    set chosenFolder to choose folder with prompt "请选择相机管理后台项目文件夹:" default location (path to home folder)
+    return POSIX path of chosenFolder
+end tell
+EOF
+)
+        if [ -n "$SELECTED_PATH" ] && [ -f "$SELECTED_PATH/stop.sh" ]; then
+            SCRIPT_PATH="$SELECTED_PATH"
+        else
+            osascript <<EOF
+tell application "System Events"
+    display dialog "错误：找不到 stop.sh 文件\n\n请在选择的文件夹中包含 stop.sh" buttons {"确定"} default button 1 with icon stop
+end tell
+EOF
+            exit 1
+        fi
+    fi
+fi
+
+STOP_SCRIPT="$SCRIPT_PATH/stop.sh"
+
+# 检查 stop.sh 是否存在
+if [ ! -f "$STOP_SCRIPT" ]; then
+    osascript <<EOF
+tell application "System Events"
+    display dialog "错误：找不到 stop.sh 文件\n\n请确保应用程序位于项目根目录中。\n\n期望位置：\n$SCRIPT_PATH" buttons {"确定"} default button 1 with icon stop
+end tell
+EOF
+    exit 1
+fi
+
+# 在后台执行停止脚本（隐藏终端）
+nohup bash "$STOP_SCRIPT" > /tmp/camera-stopper.log 2>&1 &
+
+# 等待一下让停止脚本执行
+sleep 2
+
+# 显示通知
+osascript <<EOF
+tell application "System Events"
+    display notification "相机管理后台已停止" with title "⏹️ 服务已停止" sound name "Glass"
+end tell
+EOF
+
+exit 0
