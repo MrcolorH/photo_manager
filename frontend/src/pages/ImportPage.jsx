@@ -48,6 +48,16 @@ const ImportPage = () => {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   
+  // 进度信息
+  const [progressInfo, setProgressInfo] = useState({
+    total: 0,
+    processed: 0,
+    remaining: 0,
+    currentFile: '',
+    estimatedTimeRemaining: 0,
+    percentage: 0
+  });
+  
   // 存储仓库相关
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
@@ -208,8 +218,23 @@ const ImportPage = () => {
 
     setImporting(true);
     setCurrentStep(1);
+    
+    // 重置进度信息
+    setProgressInfo({
+      total: 0,
+      processed: 0,
+      remaining: 0,
+      currentFile: '',
+      estimatedTimeRemaining: 0,
+      percentage: 0
+    });
 
     try {
+      // 设置进度回调
+      importApi.setProgressCallback((progress) => {
+        setProgressInfo(progress);
+      });
+      
       const res = await importApi.importFromCard(sourcePath.trim(), selectedRepo);
       
       if (res.data.success) {
@@ -225,6 +250,8 @@ const ImportPage = () => {
       setCurrentStep(0);
     } finally {
       setImporting(false);
+      // 清除进度回调
+      importApi.setProgressCallback(null);
     }
   };
 
@@ -355,30 +382,177 @@ const ImportPage = () => {
         <Card style={{ textAlign: 'center', padding: 60 }}>
           <Spin size="large" style={{ marginBottom: 24 }} />
           <h3>正在导入中...</h3>
-          <p style={{ color: '#999' }}>正在扫描存储卡并复制文件，请稍候</p>
-          <Progress percent={50} status="active" style={{ maxWidth: 400, margin: '0 auto' }} />
+          
+          {/* 状态提示 */}
+          <div style={{ marginBottom: 24 }}>
+            {progressInfo.total === 0 && progressInfo.percentage === 0 ? (
+              <Alert
+                message="正在扫描存储卡中的媒体文件..."
+                description="系统正在查找 JPG、RAW 和视频文件，请稍候"
+                type="info"
+                showIcon
+                style={{ maxWidth: 500, margin: '0 auto' }}
+              />
+            ) : progressInfo.total === 0 && progressInfo.percentage === 100 ? (
+              <Alert
+                message="未找到媒体文件"
+                description={
+                  <div>
+                    <p>所选文件夹中没有找到支持的媒体文件。</p>
+                    <p>支持的格式：JPG、JPEG、RAW（ARW、CR2、CR3、NEF、DNG等）、视频（MP4、MOV、AVI等）</p>
+                  </div>
+                }
+                type="warning"
+                showIcon
+                style={{ maxWidth: 500, margin: '0 auto' }}
+              />
+            ) : progressInfo.processed === progressInfo.total && progressInfo.total > 0 ? (
+              <Alert
+                message="文件处理完成"
+                description="正在整理导入结果..."
+                type="success"
+                showIcon
+                style={{ maxWidth: 500, margin: '0 auto' }}
+              />
+            ) : null}
+          </div>
+          
+          {/* 进度统计 */}
+          <Row gutter={[16, 16]} style={{ marginTop: 32, marginBottom: 32 }}>
+            <Col span={6}>
+              <Statistic
+                title="总文件数"
+                value={progressInfo.total}
+                suffix="个"
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="已处理"
+                value={progressInfo.processed}
+                suffix="个"
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="剩余"
+                value={progressInfo.remaining}
+                suffix="个"
+                valueStyle={{ color: '#fa8c16' }}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="预计剩余时间"
+                value={progressInfo.estimatedTimeRemaining > 0 ? Math.ceil(progressInfo.estimatedTimeRemaining / 60) : progressInfo.total > 0 ? '< 1' : 0}
+                suffix="分钟"
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Col>
+          </Row>
+          
+          {/* 当前处理的文件 */}
+          {progressInfo.currentFile && progressInfo.total > 0 && (
+            <div style={{ marginBottom: 16, color: '#666' }}>
+              {progressInfo.processed < progressInfo.total ? (
+                <>
+                  正在处理: <strong>{progressInfo.currentFile}</strong>
+                  <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                    第 {progressInfo.processed + 1} 个文件，共 {progressInfo.total} 个
+                  </div>
+                </>
+              ) : (
+                <>
+                  最后处理: <strong>{progressInfo.currentFile}</strong>
+                  <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                    所有文件已处理完毕
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          
+          {/* 进度条 */}
+          <Progress 
+            percent={progressInfo.percentage} 
+            status={progressInfo.total === 0 && progressInfo.percentage === 100 ? 'exception' : 'active'}
+            style={{ maxWidth: 600, margin: '0 auto' }}
+            format={(percent) => progressInfo.total === 0 ? (progressInfo.percentage === 100 ? '无文件' : '扫描中...') : `${percent}% (${progressInfo.processed}/${progressInfo.total})`}
+          />
+          
+          {/* 底部提示 */}
+          <div style={{ marginTop: 24 }}>
+            {progressInfo.total === 0 && progressInfo.percentage === 100 ? (
+              <Button type="primary" onClick={() => setCurrentStep(0)}>
+                返回重新选择
+              </Button>
+            ) : (
+              <p style={{ color: '#999' }}>
+                {progressInfo.total > 0 
+                  ? '正在扫描存储卡并复制文件，请稍候' 
+                  : '正在扫描文件夹中的媒体文件，请稍候...'}
+              </p>
+            )}
+          </div>
         </Card>
       )}
 
       {currentStep === 2 && importResult && (
         <div>
-          <Alert
-            message="导入完成！"
-            description={
-              <div>
-                <p>成功导入 {importResult.jpgCount + importResult.rawCount + importResult.videoCount} 个文件</p>
-                {importResult.skippedCount > 0 && (
-                  <p style={{ marginTop: 8, marginBottom: 0 }}>
-                    跳过 {importResult.skippedCount} 个已存在的文件（增量导入）
-                  </p>
-                )}
-              </div>
-            }
-            type="success"
-            showIcon
-            icon={<CheckCircleOutlined />}
-            style={{ marginBottom: 24 }}
-          />
+          {/* 根据导入结果显示不同的提示 */}
+          {importResult.jpgCount + importResult.rawCount + importResult.videoCount === 0 ? (
+            // 没有导入任何文件
+            importResult.skippedCount > 0 ? (
+              // 所有文件都已存在
+              <Alert
+                message="所有文件都已存在"
+                description={
+                  <div>
+                    <p>扫描到 {importResult.skippedCount} 个文件，但都已存在于目标仓库中。</p>
+                    <p style={{ marginTop: 8, color: '#666' }}>
+                      💡 提示：系统使用增量导入模式，不会覆盖已存在的文件。如果您想重新导入，请先删除目标仓库中的旧文件。
+                    </p>
+                  </div>
+                }
+                type="info"
+                showIcon
+                style={{ marginBottom: 24 }}
+              />
+            ) : (
+              // 没有找到文件
+              <Alert
+                message="未找到可导入的文件"
+                description="所选文件夹中没有找到支持的媒体文件（JPG、RAW、视频）"
+                type="warning"
+                showIcon
+                style={{ marginBottom: 24 }}
+              />
+            )
+          ) : (
+            // 成功导入文件
+            <Alert
+              message={
+                importResult.skippedCount > 0 
+                  ? `导入完成！新增 ${importResult.jpgCount + importResult.rawCount + importResult.videoCount} 个文件，跳过 ${importResult.skippedCount} 个已存在文件`
+                  : `导入完成！成功导入 ${importResult.jpgCount + importResult.rawCount + importResult.videoCount} 个文件`
+              }
+              description={
+                <div>
+                  <p>文件已成功导入到仓库 <strong>{importResult.targetRepo}</strong></p>
+                  {importResult.skippedCount > 0 && (
+                    <p style={{ marginTop: 8, marginBottom: 0, color: '#666' }}>
+                      💡 跳过的文件已存在于目标位置，未进行覆盖
+                    </p>
+                  )}
+                </div>
+              }
+              type="success"
+              showIcon
+              icon={<CheckCircleOutlined />}
+              style={{ marginBottom: 24 }}
+            />
+          )}
 
           <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
             <Col span={8}>

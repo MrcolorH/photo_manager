@@ -35,8 +35,115 @@ export const photoApi = {
 
 // 导入相关API
 export const importApi = {
-  // 从存储卡导入
-  importFromCard: (sourcePath, repoId) => api.post('/import', { sourcePath, repoId }),
+  // 从存储卡导入（使用 EventSource 进行实时进度跟踪）
+  importFromCard: (sourcePath, repoId) => {
+    return new Promise((resolve, reject) => {
+      // 构建完整的 URL
+      const baseUrl = window.location.origin;
+      const url = `${baseUrl}/api/import?sourcePath=${encodeURIComponent(sourcePath)}&repoId=${repoId || ''}`;
+      
+      console.log('开始 SSE 连接:', url);
+      
+      // 创建 EventSource 连接
+      const eventSource = new EventSource(url);
+      
+      let progressData = null;
+      let completeData = null;
+      let hasError = false;
+      
+      // 监听打开事件
+      eventSource.onopen = () => {
+        console.log('SSE 连接已建立');
+      };
+      
+      // 监听进度事件
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('收到 SSE 消息:', data.type);
+          
+          if (data.type === 'progress') {
+            progressData = data.data;
+            // 调用进度回调（如果有的话）
+            if (importApi._progressCallback) {
+              importApi._progressCallback(progressData);
+            }
+          } else if (data.type === 'complete') {
+            completeData = data.data;
+            console.log('导入完成');
+            eventSource.close();
+            resolve({ data: { success: true, data: completeData } });
+          } else if (data.type === 'error') {
+            console.error('导入错误:', data.error);
+            hasError = true;
+            eventSource.close();
+            reject(new Error(data.error));
+          }
+        } catch (error) {
+          console.error('解析 SSE 数据失败:', error);
+        }
+      };
+      
+      // 监听错误事件
+      eventSource.onerror = (error) => {
+        console.error('SSE 连接错误:', error);
+        console.error('EventSource readyState:', eventSource.readyState);
+        
+        // 如果已经收到完成或错误消息，忽略此错误
+        if (hasError || completeData) {
+          return;
+        }
+        
+        // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+        if (eventSource.readyState === EventSource.CLOSED) {
+          console.log('SSE 连接已关闭');
+        } else if (eventSource.readyState === EventSource.CONNECTING) {
+          console.log('SSE 正在重连...');
+          // 不要立即拒绝，让 EventSource 尝试重连
+          return;
+        } else {
+          console.log('SSE 连接中断');
+          eventSource.close();
+          if (!hasError && !completeData) {
+            reject(new Error('连接中断'));
+          }
+        }
+      };
+      
+      // 5分钟超时
+      const timeoutId = setTimeout(() => {
+        console.log('导入超时');
+        eventSource.close();
+        if (!completeData && !hasError) {
+          reject(new Error('导入超时（5分钟）'));
+        }
+      }, 300000);
+      
+      // 清理函数
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+      };
+      
+      // 在 resolve 和 reject 时清理超时
+      const originalResolve = resolve;
+      const originalReject = reject;
+      
+      resolve = (value) => {
+        cleanup();
+        originalResolve(value);
+      };
+      
+      reject = (reason) => {
+        cleanup();
+        originalReject(reason);
+      };
+    });
+  },
+  
+  // 设置进度回调
+  setProgressCallback: (callback) => {
+    importApi._progressCallback = callback;
+  },
   
   // 获取默认导入路径
   getDefaultPath: () => api.get('/import/default-path'),

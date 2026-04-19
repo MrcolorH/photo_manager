@@ -20,8 +20,13 @@ function getFileType(ext) {
 }
 
 // 递归扫描目录
-async function scanDirectory(dirPath, files = []) {
+async function scanDirectory(dirPath, files = [], basePath = null) {
   try {
+    // 如果是第一次调用，设置 basePath
+    if (!basePath) {
+      basePath = dirPath;
+    }
+    
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     
     for (const entry of entries) {
@@ -34,7 +39,7 @@ async function scanDirectory(dirPath, files = []) {
       
       if (entry.isDirectory()) {
         // 递归扫描子目录
-        await scanDirectory(fullPath, files);
+        await scanDirectory(fullPath, files, basePath);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name);
         const type = getFileType(ext);
@@ -44,7 +49,7 @@ async function scanDirectory(dirPath, files = []) {
           files.push({
             name: entry.name,
             path: fullPath,
-            relativePath: path.relative(dirPath, fullPath),
+            relativePath: path.relative(basePath, fullPath),
             type: type,
             extension: ext.toLowerCase(),
             size: stats.size,

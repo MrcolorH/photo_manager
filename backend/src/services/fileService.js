@@ -21,9 +21,13 @@ class FileService {
   }
 
   // 从存储卡导入照片（增量导入，不覆盖已有文件）
-  async importFromCard(sourcePath) {
+  async importFromCard(sourcePath, progressCallback = null) {
+    console.log('开始扫描目录:', sourcePath);
+    
     // 扫描存储卡中的所有媒体文件
     const files = await scanDirectory(sourcePath);
+    
+    console.log(`扫描完成，找到 ${files.length} 个媒体文件`);
     
     const results = {
       jpg: [],
@@ -36,8 +40,42 @@ class FileService {
     // 确保分类目录存在
     await this.initCategories();
 
+    const totalFiles = files.length;
+    let processedFiles = 0;
+    const startTime = Date.now();
+    
+    // 如果没有文件，立即返回结果
+    if (totalFiles === 0) {
+      console.log('没有找到媒体文件，导入结束');
+      if (progressCallback) {
+        progressCallback({
+          total: 0,
+          processed: 0,
+          remaining: 0,
+          currentFile: '',
+          estimatedTimeRemaining: 0,
+          percentage: 100
+        });
+      }
+      return results;
+    }
+    
+    // 发送初始进度
+    if (progressCallback) {
+      progressCallback({
+        total: totalFiles,
+        processed: 0,
+        remaining: totalFiles,
+        currentFile: '准备开始...',
+        estimatedTimeRemaining: 0,
+        percentage: 0
+      });
+    }
+
     // 按类型分类复制文件
     for (const file of files) {
+      console.log(`处理文件 ${processedFiles + 1}/${totalFiles}: ${file.name}`);
+      
       try {
         const targetDir = this.getCategoryPath(file.type);
         const targetPath = path.join(targetDir, file.name);
@@ -52,6 +90,7 @@ class FileService {
             size: file.size,
             reason: copyResult.reason || 'already_exists'
           });
+          console.log(`  文件已存在，跳过: ${file.name}`);
         } else {
           // 文件成功复制
           results[file.type].push({
@@ -60,14 +99,42 @@ class FileService {
             name: file.name,
             size: file.size
           });
+          console.log(`  文件复制成功: ${file.name}`);
         }
       } catch (error) {
         results.errors.push({
           file: file.name,
           error: error.message
         });
+        console.error(`  文件处理失败: ${file.name}`, error.message);
+      }
+
+      // 更新进度
+      processedFiles++;
+      if (progressCallback) {
+        const elapsedTime = (Date.now() - startTime) / 1000; // 秒
+        const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
+        const remainingFiles = totalFiles - processedFiles;
+        const estimatedTimeRemaining = avgTimePerFile * remainingFiles; // 秒
+        
+        progressCallback({
+          total: totalFiles,
+          processed: processedFiles,
+          remaining: remainingFiles,
+          currentFile: file.name,
+          estimatedTimeRemaining: Math.round(estimatedTimeRemaining),
+          percentage: Math.round((processedFiles / totalFiles) * 100)
+        });
       }
     }
+    
+    console.log('导入完成:', {
+      jpg: results.jpg.length,
+      raw: results.raw.length,
+      video: results.video.length,
+      skipped: results.skipped.length,
+      errors: results.errors.length
+    });
 
     return results;
   }

@@ -45,16 +45,19 @@ async function saveRepos(repos) {
   await fs.writeFile(REPOS_CONFIG_PATH, JSON.stringify(repos, null, 2));
 }
 
-// 从存储卡导入照片
-router.post('/', async (req, res) => {
+// 从存储卡导入照片（支持实时进度，使用 GET 以支持 SSE）
+router.get('/', async (req, res) => {
   try {
-    const { sourcePath, repoId } = req.body;
+    const { sourcePath, repoId } = req.query;
     
     if (!sourcePath) {
-      return res.status(400).json({
-        success: false,
-        error: '请提供存储卡路径'
-      });
+      // SSE 错误格式
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.write(`data: ${JSON.stringify({ type: 'error', error: '请提供存储卡路径' })}\n\n`);
+      return res.end();
     }
     
     // 获取目标仓库路径
@@ -64,17 +67,61 @@ router.post('/', async (req, res) => {
       : repos.find(r => r.isDefault) || repos[0];
     
     if (!targetRepo) {
-      return res.status(400).json({
-        success: false,
-        error: '未找到指定的存储仓库'
-      });
+      // SSE 错误格式
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.write(`data: ${JSON.stringify({ type: 'error', error: '未找到指定的存储仓库' })}\n\n`);
+      return res.end();
     }
     
     const fileService = new FileService(targetRepo.path);
-    const results = await fileService.importFromCard(sourcePath);
     
-    res.json({
-      success: true,
+    // 设置 SSE 头部
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    console.log('开始导入，源路径:', sourcePath);
+    console.log('目标仓库:', targetRepo.name);
+    
+    // 立即发送一个初始消息，确认连接已建立
+    res.write(`data: ${JSON.stringify({ type: 'progress', data: { 
+      total: 0, 
+      processed: 0, 
+      remaining: 0, 
+      currentFile: '正在扫描文件...', 
+      estimatedTimeRemaining: 0, 
+      percentage: 0 
+    }})}\n\n`);
+    
+    // 进度回调函数
+    const progressCallback = (progress) => {
+      try {
+        const message = `data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`;
+        res.write(message);
+        console.log('发送进度:', progress.percentage + '% -', progress.currentFile);
+      } catch (err) {
+        console.error('发送进度失败:', err);
+      }
+    };
+    
+    // 执行导入
+    const results = await fileService.importFromCard(sourcePath, progressCallback);
+    
+    console.log('导入完成，结果:', {
+      jpg: results.jpg.length,
+      raw: results.raw.length,
+      video: results.video.length,
+      errors: results.errors.length,
+      skipped: results.skipped.length
+    });
+    
+    // 发送最终结果
+    res.write(`data: ${JSON.stringify({ 
+      type: 'complete', 
       data: {
         jpgCount: results.jpg.length,
         rawCount: results.raw.length,
@@ -84,12 +131,13 @@ router.post('/', async (req, res) => {
         targetRepo: targetRepo.name,
         details: results
       }
-    });
+    })}\n\n`);
+    
+    res.end();
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error('导入过程中出错:', error);
+    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+    res.end();
   }
 });
 
