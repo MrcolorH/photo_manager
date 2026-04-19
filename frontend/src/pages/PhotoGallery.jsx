@@ -46,7 +46,7 @@ const PhotoGallery = () => {
   const [category, setCategory] = useState('jpg');
   const [pagination, setPagination] = useState({
     page: 1,
-    pageSize: 24,
+    pageSize: 36,
     total: 0
   });
   const [sortBy, setSortBy] = useState('modifiedTime');
@@ -339,8 +339,10 @@ const PhotoGallery = () => {
   };
 
   return (
-    <div>
-      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 96px)' }}>
+      {/* 顶部控制栏 */}
+      <div style={{ flexShrink: 0, marginBottom: 16 }}>
         <Space>
           <FilterOutlined />
           <Select
@@ -408,7 +410,7 @@ const PhotoGallery = () => {
 
       {/* 批量操作栏 */}
       {photos.length > 0 && (
-        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f5f5f5', borderRadius: 4 }}>
+        <div style={{ flexShrink: 0, marginBottom: 12, padding: '8px 16px', background: '#f5f5f5', borderRadius: 4 }}>
           <Space>
             <Checkbox checked={selectAll} onChange={handleSelectAll}>
               全选
@@ -443,239 +445,247 @@ const PhotoGallery = () => {
         </div>
       )}
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 100 }}>
-          <Spin size="large" />
-        </div>
-      ) : photos.length === 0 ? (
-        <Empty description="暂无照片" style={{ padding: 100 }} />
-      ) : (
-        <>
-          <PhotoProvider
-            maskOpacity={0.5}
-            bannerVisible={true}
-            toolbarRender={({ rotate, onRotate, onScale, scale }) => {
-              return (
-                <>
-                  <Button
-                    type="text"
-                    icon={<span style={{ fontSize: 20 }}>↺</span>}
-                    onClick={() => onRotate(rotate - 90)}
-                    style={{ color: '#fff' }}
-                  />
-                  <Button
-                    type="text"
-                    icon={<span style={{ fontSize: 20 }}>↻</span>}
-                    onClick={() => onRotate(rotate + 90)}
-                    style={{ color: '#fff' }}
-                  />
-                  <Button
-                    type="text"
-                    icon={<span style={{ fontSize: 20 }}>+</span>}
-                    onClick={() => onScale(scale + 0.5)}
-                    style={{ color: '#fff' }}
-                  />
-                  <Button
-                    type="text"
-                    icon={<span style={{ fontSize: 20 }}>-</span>}
-                    onClick={() => onScale(scale - 0.5)}
-                    style={{ color: '#fff' }}
-                  />
-                </>
-              );
-            }}
-          >
-            <Row gutter={[16, 16]}>
-              {photos.map(photo => (
-                <Col xs={12} sm={8} md={6} lg={4} key={photo.id}>
-                  <Card
-                    hoverable
-                    className="photo-card"
-                    cover={
-                      <div style={{ position: 'relative' }}>
-                        {/* 复选框 */}
-                        <div style={{ 
-                          position: 'absolute', 
-                          top: 8, 
-                          left: 8, 
-                          zIndex: 10,
-                          background: 'rgba(255, 255, 255, 0.9)',
-                          borderRadius: 4,
-                          padding: 2
-                        }}>
-                          <Checkbox
-                            checked={selectedPhotos.includes(photo.id)}
-                            onChange={(e) => handleSelectPhoto(photo.id, e.target.checked)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </div>
-                        
-                        {category === 'video' ? (
-                          <div 
-                            style={{ 
-                              height: 150, 
-                              background: '#000',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              cursor: 'pointer',
-                              position: 'relative'
-                            }}
-                            onClick={() => handlePreview(photo)}
-                          >
-                            <img
-                              src={photo.thumbnailUrl}
-                              alt={photo.name}
-                              style={{ 
-                                width: '100%', 
-                                height: '100%', 
-                                objectFit: 'cover' 
-                              }}
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                e.target.nextSibling.style.display = 'flex';
-                              }}
+      {/* 照片展示区域 - 可滚动 */}
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 100 }}>
+            <Spin size="large" />
+          </div>
+        ) : photos.length === 0 ? (
+          <Empty description="暂无照片" style={{ padding: 100 }} />
+        ) : (
+          <>
+            <PhotoProvider
+              maskOpacity={0.5}
+              bannerVisible={true}
+              toolbarRender={({ rotate, onRotate, onScale, scale }) => {
+                return (
+                  <>
+                    <Button
+                      type="text"
+                      icon={<span style={{ fontSize: 20 }}>↺</span>}
+                      onClick={() => onRotate(rotate - 90)}
+                      style={{ color: '#fff' }}
+                    />
+                    <Button
+                      type="text"
+                      icon={<span style={{ fontSize: 20 }}>↻</span>}
+                      onClick={() => onRotate(rotate + 90)}
+                      style={{ color: '#fff' }}
+                    />
+                    <Button
+                      type="text"
+                      icon={<span style={{ fontSize: 20 }}>+</span>}
+                      onClick={() => onScale(scale + 0.5)}
+                      style={{ color: '#fff' }}
+                    />
+                    <Button
+                      type="text"
+                      icon={<span style={{ fontSize: 20 }}>-</span>}
+                      onClick={() => onScale(scale - 0.5)}
+                      style={{ color: '#fff' }}
+                    />
+                  </>
+                );
+              }}
+            >
+              <Row gutter={[12, 12]} style={{ margin: 0 }}>
+                {photos.map(photo => (
+                  <Col xs={12} sm={8} md={6} lg={4} xl={3} xxl={2} key={photo.id} style={{ minWidth: 0 }}>
+                    <Card
+                      hoverable
+                      className="photo-card"
+                      cover={
+                        <div style={{ position: 'relative' }}>
+                          {/* 复选框 */}
+                          <div style={{ 
+                            position: 'absolute', 
+                            top: 8, 
+                            left: 8, 
+                            zIndex: 10,
+                            background: 'rgba(255, 255, 255, 0.9)',
+                            borderRadius: 4,
+                            padding: 2
+                          }}>
+                            <Checkbox
+                              checked={selectedPhotos.includes(photo.id)}
+                              onChange={(e) => handleSelectPhoto(photo.id, e.target.checked)}
+                              onClick={(e) => e.stopPropagation()}
                             />
-                            <div style={{
-                              display: 'none',
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              background: '#333',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexDirection: 'column'
-                            }}>
-                              <span style={{ fontSize: 48 }}>🎬</span>
-                              <span style={{ color: '#fff', marginTop: 8, fontSize: 12 }}>视频文件</span>
-                            </div>
-                            <div style={{
-                              position: 'absolute',
-                              top: '50%',
-                              left: '50%',
-                              transform: 'translate(-50%, -50%)',
-                              fontSize: 48,
-                              color: '#fff',
-                              textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                              pointerEvents: 'none'
-                            }}>
-                              ▶️
-                            </div>
                           </div>
-                        ) : (
-                          category === 'raw' ? (
+                          
+                          {category === 'video' ? (
                             <div 
                               style={{ 
-                                height: 150, 
-                                background: '#f0f0f0',
+                                height: 120, 
+                                background: '#000',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                position: 'relative'
                               }}
                               onClick={() => handlePreview(photo)}
                             >
-                              <Image
-                                alt={photo.name}
+                              <img
                                 src={photo.thumbnailUrl}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                fallback="/placeholder-raw.svg"
-                                preview={false}
-                                placeholder={
-                                  <div style={{ 
-                                    height: 150, 
-                                    background: '#f0f0f0',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                  }}>
-                                    <Spin size="small" />
-                                  </div>
-                                }
+                                alt={photo.name}
+                                style={{ 
+                                  width: '100%', 
+                                  height: '100%', 
+                                  objectFit: 'cover' 
+                                }}
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling.style.display = 'flex';
+                                }}
                               />
+                              <div style={{
+                                display: 'none',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: '#333',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexDirection: 'column'
+                              }}>
+                                <span style={{ fontSize: 48 }}>🎬</span>
+                                <span style={{ color: '#fff', marginTop: 8, fontSize: 12 }}>视频文件</span>
+                              </div>
+                              <div style={{
+                                position: 'absolute',
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%)',
+                                fontSize: 48,
+                                color: '#fff',
+                                textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                                pointerEvents: 'none'
+                              }}>
+                                ▶️
+                              </div>
                             </div>
                           ) : (
-                            <PhotoView src={photo.url}>
-                              <Image
-                                alt={photo.name}
-                                src={photo.thumbnailUrl}
-                                style={{ height: 150, objectFit: 'cover', cursor: 'pointer' }}
-                                fallback="/placeholder-raw.svg"
-                                preview={false}
-                                placeholder={
-                                  <div style={{ 
-                                    height: 150, 
-                                    background: '#f0f0f0',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                  }}>
-                                    <Spin size="small" />
-                                  </div>
-                                }
-                              />
-                            </PhotoView>
-                          )
-                        )}
-                      </div>
-                    }
-                    actions={[
-                      <Tooltip title="打开位置" key="location">
-                        <Dropdown menu={getLocationMenu(photo)} trigger={['click']}>
-                          <FolderOpenOutlined onClick={(e) => e.stopPropagation()} />
-                        </Dropdown>
-                      </Tooltip>,
-                      category !== 'raw' && (
-                        <Tooltip title="预览" key="preview">
-                          <EyeOutlined onClick={() => handlePreview(photo)} />
-                        </Tooltip>
-                      ),
-                      <Tooltip title="删除" key="delete">
-                        <DeleteOutlined onClick={() => handleDelete(photo)} style={{ color: '#ff4d4f' }} />
-                      </Tooltip>
-                    ].filter(Boolean)}
-                  >
-                    <Card.Meta
-                      title={
-                        <Tooltip title={photo.name}>
-                          <div style={{ 
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            fontSize: 12
-                          }}>
-                            {photo.name}
-                          </div>
-                        </Tooltip>
-                      }
-                      description={
-                        <div style={{ fontSize: 11, color: '#999' }}>
-                          <div>{formatFileSize(photo.size)}</div>
-                          <div>{formatDate(photo.modifiedTime)}</div>
+                            category === 'raw' ? (
+                              <div 
+                                style={{ 
+                                  height: 120, 
+                                  background: '#f0f0f0',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => handlePreview(photo)}
+                              >
+                                <Image
+                                  alt={photo.name}
+                                  src={photo.thumbnailUrl}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  fallback="/placeholder-raw.svg"
+                                  preview={false}
+                                  placeholder={
+                                    <div style={{ 
+                                      height: 120, 
+                                      background: '#f0f0f0',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}>
+                                      <Spin size="small" />
+                                    </div>
+                                  }
+                                />
+                              </div>
+                            ) : (
+                              <PhotoView src={photo.url}>
+                                <Image
+                                  alt={photo.name}
+                                  src={photo.thumbnailUrl}
+                                  style={{ height: 120, objectFit: 'cover', cursor: 'pointer' }}
+                                  fallback="/placeholder-raw.svg"
+                                  preview={false}
+                                  placeholder={
+                                    <div style={{ 
+                                      height: 120, 
+                                      background: '#f0f0f0',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}>
+                                      <Spin size="small" />
+                                    </div>
+                                  }
+                                />
+                              </PhotoView>
+                            )
+                          )}
                         </div>
                       }
-                    />
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          </PhotoProvider>
+                      actions={[
+                        <Tooltip title="打开位置" key="location">
+                          <Dropdown menu={getLocationMenu(photo)} trigger={['click']}>
+                            <FolderOpenOutlined onClick={(e) => e.stopPropagation()} />
+                          </Dropdown>
+                        </Tooltip>,
+                        category !== 'raw' && (
+                          <Tooltip title="预览" key="preview">
+                            <EyeOutlined onClick={() => handlePreview(photo)} />
+                          </Tooltip>
+                        ),
+                        <Tooltip title="删除" key="delete">
+                          <DeleteOutlined onClick={() => handleDelete(photo)} style={{ color: '#ff4d4f' }} />
+                        </Tooltip>
+                      ].filter(Boolean)}
+                    >
+                      <Card.Meta
+                        title={
+                          <Tooltip title={photo.name}>
+                            <div style={{ 
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              fontSize: 12
+                            }}>
+                              {photo.name}
+                            </div>
+                          </Tooltip>
+                        }
+                        description={
+                          <div style={{ fontSize: 11, color: '#999' }}>
+                            <div>{formatFileSize(photo.size)}</div>
+                            <div>{formatDate(photo.modifiedTime)}</div>
+                          </div>
+                        }
+                      />
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
+            </PhotoProvider>
+          </>
+        )}
+      </div>
 
-          <div style={{ marginTop: 24, textAlign: 'center' }}>
-            <Pagination
-              current={pagination.page}
-              pageSize={pagination.pageSize}
-              total={pagination.total}
-              onChange={handlePageChange}
-              showSizeChanger
-              showQuickJumper
-              pageSizeOptions={['12', '24', '48', '96']}
-            />
-          </div>
-        </>
+      {/* 底部分页 - 固定 */}
+      {photos.length > 0 && (
+        <div style={{ flexShrink: 0, marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'flex-end' }}>
+          <Pagination
+            current={pagination.page}
+            pageSize={pagination.pageSize}
+            total={pagination.total}
+            onChange={handlePageChange}
+            showSizeChanger
+            showQuickJumper
+            pageSizeOptions={['36', '72', '108', '144']}
+            size="small"
+          />
+        </div>
       )}
+      </div>
 
       {/* 导出对话框 */}
       <Modal
@@ -780,7 +790,7 @@ const PhotoGallery = () => {
           )}
         </div>
       </Modal>
-    </div>
+    </>
   );
 };
 

@@ -11,8 +11,8 @@ body {
 
 /* 自定义滚动条 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -27,6 +27,40 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* 隐藏垂直滚动条，但保持功能 */
+body {
+  overflow-y: overlay;
+}
+
+/* 优化内容区域，减少不必要的空间 */
+.ant-layout-content {
+  overflow-y: auto !important;
+}
+
+/* 让照片网格更紧凑 */
+.ant-row {
+  margin-bottom: 0 !important;
+  flex-wrap: wrap !important;
+}
+
+/* 防止列溢出 */
+.ant-col {
+  max-width: 100% !important;
+}
+
+/* 防止横向滚动 */
+body,
+html,
+#root {
+  overflow-x: hidden !important;
+  max-width: 100vw;
+}
+
+/* 确保内容区域不溢出 */
+.ant-layout-content {
+  overflow-x: hidden !important;
 }
 
 /* 图片预览遮罩层 */
@@ -46,11 +80,37 @@ body {
 /* 照片卡片悬停效果 */
 .photo-card {
   transition: all 0.3s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .photo-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.photo-card .ant-card-cover {
+  flex-shrink: 0;
+}
+
+/* 优化卡片内容，使其更紧凑 */
+.photo-card .ant-card-body {
+  padding: 8px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.photo-card .ant-card-meta-title {
+  font-size: 11px !important;
+  margin-bottom: 4px !important;
+}
+
+.photo-card .ant-card-meta-description {
+  font-size: 10px !important;
 }
 
 /* 加载动画 */

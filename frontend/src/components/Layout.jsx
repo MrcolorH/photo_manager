@@ -77,7 +77,7 @@ const Layout = () => {
       
       <AntLayout>
         <Sider 
-          width={250} 
+          width={200} 
           theme="light" 
           style={{ 
             boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
@@ -142,11 +142,12 @@ const Layout = () => {
         </Sider>
         
         <Content style={{ 
-          padding: 24, 
+          padding: '16px 24px', 
           background: '#fff',
           overflow: 'auto',
           height: 'calc(100vh - 64px)',
-          flex: 1
+          flex: 1,
+          maxWidth: '100%'
         }}>
           <Outlet />
         </Content>
