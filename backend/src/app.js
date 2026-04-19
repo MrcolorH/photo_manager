@@ -19,6 +19,12 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// 请求日志中间件
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
 // 存储仓库配置文件路径
 const REPOS_CONFIG_PATH = path.join(__dirname, 'data/repos.json');
 
@@ -28,10 +34,23 @@ function getRepos() {
     const data = fs.readFileSync(REPOS_CONFIG_PATH, 'utf8');
     return JSON.parse(data);
   } catch {
+    // 根据操作系统设置默认路径
+    let defaultPath;
+    if (process.platform === 'win32') {
+      // Windows: 使用用户图片目录
+      defaultPath = path.join(process.env.USERPROFILE || 'C:\\Users\\Default', 'Pictures', '相机照片');
+    } else if (process.platform === 'darwin') {
+      // macOS: 使用用户图片目录
+      defaultPath = path.join(process.env.HOME || '/Users/username', 'Pictures', '相机照片');
+    } else {
+      // Linux: 使用用户主目录
+      defaultPath = path.join(process.env.HOME || '/home/username', 'Pictures', '相机照片');
+    }
+    
     const defaultRepo = {
       id: 'default',
       name: '默认仓库',
-      path: process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片',
+      path: process.env.PHOTO_BASE_PATH || defaultPath,
       isDefault: true
     };
     return [defaultRepo];
@@ -46,16 +65,44 @@ app.use('/uploads', (req, res, next) => {
   let targetPath;
   if (repoId) {
     const repo = repos.find(r => r.id === repoId);
-    targetPath = repo ? repo.path : (process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片');
+    targetPath = repo ? (repo.path === 'AUTO' ? getDefaultPhotoPath() : repo.path) : getDefaultPhotoPath();
   } else {
     // 默认使用默认仓库
     const defaultRepo = repos.find(r => r.isDefault);
-    targetPath = defaultRepo ? defaultRepo.path : (process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片');
+    targetPath = defaultRepo ? (defaultRepo.path === 'AUTO' ? getDefaultPhotoPath() : defaultRepo.path) : getDefaultPhotoPath();
   }
   
-  // 使用 express.static 提供文件服务
-  express.static(targetPath)(req, res, next);
+  // 检查路径是否存在
+  try {
+    fs.accessSync(targetPath);
+    // 使用 express.static 提供文件服务
+    express.static(targetPath)(req, res, next);
+  } catch (err) {
+    console.error(`静态文件路径不存在: ${targetPath}`);
+    res.status(404).json({ error: '存储路径不存在' });
+  }
 });
+
+// 获取默认照片路径（跨平台兼容）
+function getDefaultPhotoPath() {
+  if (process.env.PHOTO_BASE_PATH) {
+    return process.env.PHOTO_BASE_PATH;
+  }
+  
+  let defaultPath;
+  if (process.platform === 'win32') {
+    // Windows: 使用用户图片目录
+    defaultPath = path.join(process.env.USERPROFILE || 'C:\\Users\\Default', 'Pictures', '相机照片');
+  } else if (process.platform === 'darwin') {
+    // macOS: 使用用户图片目录
+    defaultPath = path.join(process.env.HOME || '/Users/username', 'Pictures', '相机照片');
+  } else {
+    // Linux: 使用用户主目录
+    defaultPath = path.join(process.env.HOME || '/home/username', 'Pictures', '相机照片');
+  }
+  
+  return defaultPath;
+}
 
 // 路由
 app.use('/api/photos', photoRoutes);

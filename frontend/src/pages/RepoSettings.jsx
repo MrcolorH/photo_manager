@@ -12,7 +12,8 @@ import {
   message,
   Popconfirm,
   Alert,
-  Descriptions
+  Descriptions,
+  App
 } from 'antd';
 import {
   PlusOutlined,
@@ -26,6 +27,7 @@ import {
 import { importApi } from '../api';
 
 const RepoSettings = () => {
+  const { message: messageApi } = App.useApp();
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -45,7 +47,7 @@ const RepoSettings = () => {
         setRepos(res.data.data);
       }
     } catch (error) {
-      message.error('获取仓库列表失败');
+      messageApi.error('获取仓库列表失败');
     } finally {
       setLoading(false);
     }
@@ -79,40 +81,41 @@ const RepoSettings = () => {
       
       const res = await importApi.addRepo({ ...values, path: repoPath });
       if (res.data.success) {
-        message.success(editingRepo ? '修改成功' : '添加成功');
+        messageApi.success(editingRepo ? '修改成功' : '添加成功');
         setModalVisible(false);
         form.resetFields();
         setRepoPath('');
         fetchRepos();
       }
     } catch (error) {
-      message.error((editingRepo ? '修改' : '添加') + '失败: ' + (error.response?.data?.error || error.message));
+      messageApi.error((editingRepo ? '修改' : '添加') + '失败: ' + (error.response?.data?.error || error.message));
     }
   };
 
   // 使用后端接口选择文件夹
   const handleSelectFolder = async () => {
+    let hide;
     try {
-      message.loading('正在打开文件夹选择对话框...', 0);
+      hide = messageApi.loading('正在打开文件夹选择对话框...', 0);
       
       const res = await importApi.selectFolder();
       
-      message.destroy();
+      if (hide) hide();
       
       if (res.data.success) {
         const selectedPath = res.data.data.path;
         setRepoPath(selectedPath);
         form.setFieldsValue({ path: selectedPath });
-        message.success('已选择: ' + selectedPath);
+        messageApi.success('已选择: ' + selectedPath);
       } else {
         if (res.data.error !== '用户取消选择') {
-          message.error(res.data.error || '选择失败');
+          messageApi.error(res.data.error || '选择失败');
         }
       }
     } catch (error) {
-      message.destroy();
       console.error('选择文件夹失败:', error);
-      message.error('选择文件夹失败: ' + (error.response?.data?.error || error.message));
+      if (hide) hide();
+      messageApi.error('选择文件夹失败: ' + (error.response?.data?.error || error.message));
     }
   };
 
@@ -120,11 +123,11 @@ const RepoSettings = () => {
     try {
       const res = await importApi.deleteRepo(repo.id);
       if (res.data.success) {
-        message.success('删除成功');
+        messageApi.success('删除成功');
         fetchRepos();
       }
     } catch (error) {
-      message.error('删除失败: ' + (error.response?.data?.error || error.message));
+      messageApi.error('删除失败: ' + (error.response?.data?.error || error.message));
     }
   };
 
@@ -132,11 +135,11 @@ const RepoSettings = () => {
     try {
       const res = await importApi.setDefaultRepo(repoId);
       if (res.data.success) {
-        message.success('设置成功');
+        messageApi.success('设置成功');
         fetchRepos();
       }
     } catch (error) {
-      message.error('设置失败');
+      messageApi.error('设置失败');
     }
   };
 
@@ -216,7 +219,7 @@ const RepoSettings = () => {
       <h2 style={{ marginBottom: 16 }}>存储仓库配置</h2>
 
       <Alert
-        message="仓库说明"
+        title="仓库说明"
         description={
           <div>
             <p>存储仓库是照片文件的存放目录，每个仓库包含 jpg、raw、video 三个子文件夹。</p>
@@ -285,7 +288,7 @@ const RepoSettings = () => {
           >
             <Space.Compact style={{ width: '100%' }}>
               <Input
-                placeholder="例如：/Users/colorh/Pictures/索尼照片"
+                placeholder="例如：C:\\Users\\YourName\\Pictures\\相机照片"
                 value={repoPath}
                 onChange={(e) => {
                   setRepoPath(e.target.value);
@@ -317,16 +320,16 @@ const RepoSettings = () => {
       <Card title="目录结构说明" style={{ marginTop: 24 }}>
         <Descriptions bordered column={1}>
           <Descriptions.Item label="仓库根目录">
-            /Users/colorh/Pictures/相机照片
+            C:\Users\[用户名]\Pictures\相机照片
           </Descriptions.Item>
           <Descriptions.Item label="JPG 照片">
-            /Users/colorh/Pictures/相机照片/jpg/
+            C:\Users\[用户名]\Pictures\相机照片\jpg\
           </Descriptions.Item>
           <Descriptions.Item label="RAW 底片">
-            /Users/colorh/Pictures/相机照片/raw/
+            C:\Users\[用户名]\Pictures\相机照片\raw\
           </Descriptions.Item>
           <Descriptions.Item label="视频文件">
-            /Users/colorh/Pictures/相机照片/video/
+            C:\Users\[用户名]\Pictures\相机照片\video\
           </Descriptions.Item>
         </Descriptions>
       </Card>

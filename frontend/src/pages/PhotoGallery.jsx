@@ -581,23 +581,19 @@ const PhotoGallery = () => {
                                 }}
                                 onClick={() => handlePreview(photo)}
                               >
-                                <Image
+                                <img
                                   alt={photo.name}
-                                  src={photo.thumbnailUrl}
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                  fallback="/placeholder-raw.svg"
-                                  preview={false}
-                                  placeholder={
-                                    <div style={{ 
-                                      height: 120, 
-                                      background: '#f0f0f0',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center'
-                                    }}>
-                                      <Spin size="small" />
-                                    </div>
-                                  }
+                                  src={`${photo.thumbnailUrl}&t=${Date.now()}`}
+                                  style={{ 
+                                    width: '100%', 
+                                    height: '100%', 
+                                    objectFit: 'cover',
+                                    display: 'block'
+                                  }}
+                                  onError={(e) => {
+                                    console.error('RAW缩略图加载失败:', photo.thumbnailUrl);
+                                    e.target.src = '/placeholder-raw.svg';
+                                  }}
                                 />
                               </div>
                             ) : (

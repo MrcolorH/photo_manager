@@ -334,27 +334,19 @@ const SyncDeletePage = () => {
                   }}
                   onClick={() => handleOpenRaw(item)}
                 >
-                  <Image
-                    src={`/api/photos/thumbnail?path=${encodeURIComponent(item.path)}&width=160`}
+                  <img
+                    src={`/api/photos/thumbnail?path=${encodeURIComponent(item.path)}&width=160&t=${Date.now()}`}
                     alt={item.name}
                     style={{ 
                       width: '100%', 
                       height: '100%', 
-                      objectFit: 'cover' 
+                      objectFit: 'cover',
+                      display: 'block'
                     }}
-                    preview={false}
-                    fallback="/placeholder-raw.svg"
-                    placeholder={
-                      <div style={{ 
-                        width: 80,
-                        height: 60,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <Spin size="small" />
-                      </div>
-                    }
+                    onError={(e) => {
+                      console.error('RAW缩略图加载失败:', item.path);
+                      e.target.src = '/placeholder-raw.svg';
+                    }}
                   />
                 </div>
                 <List.Item.Meta

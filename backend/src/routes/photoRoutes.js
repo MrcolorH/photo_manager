@@ -26,15 +26,43 @@ async function getRepos() {
 // 获取指定仓库的FileService实例
 async function getFileService(repoId) {
   const repos = await getRepos();
-  const repo = repoId 
-    ? repos.find(r => r.id === repoId)
-    : repos.find(r => r.isDefault) || repos[0];
+  let repo;
+  
+  if (repoId) {
+    repo = repos.find(r => r.id === repoId);
+  } else {
+    repo = repos.find(r => r.isDefault) || repos[0];
+  }
   
   if (!repo) {
     throw new Error('未找到指定的存储仓库');
   }
   
-  return new FileService(repo.path);
+  // 如果路径是 AUTO，使用默认路径
+  const repoPath = repo.path === 'AUTO' ? getDefaultPhotoPath() : repo.path;
+  
+  return new FileService(repoPath);
+}
+
+// 获取默认照片路径（跨平台兼容）
+function getDefaultPhotoPath() {
+  if (process.env.PHOTO_BASE_PATH) {
+    return process.env.PHOTO_BASE_PATH;
+  }
+  
+  let defaultPath;
+  if (process.platform === 'win32') {
+    // Windows: 使用用户图片目录
+    defaultPath = path.join(process.env.USERPROFILE || 'C:\\Users\\Default', 'Pictures', '相机照片');
+  } else if (process.platform === 'darwin') {
+    // macOS: 使用用户图片目录
+    defaultPath = path.join(process.env.HOME || '/Users/username', 'Pictures', '相机照片');
+  } else {
+    // Linux: 使用用户主目录
+    defaultPath = path.join(process.env.HOME || '/home/username', 'Pictures', '相机照片');
+  }
+  
+  return defaultPath;
 }
 
 // 获取照片列表
@@ -288,12 +316,17 @@ router.get('/thumbnail', async (req, res) => {
     // 如果是 RAW 文件，使用专门的缩略图生成策略
     const rawExtensions = ['.arw', '.cr2', '.cr3', '.nef', '.dng', '.orf', '.raf', '.rw2', '.raw'];
     if (rawExtensions.includes(ext)) {
+      console.log('\n🔍 检测到RAW文件，开始生成缩略图');
+      console.log('文件路径:', decodedPath);
+      console.log('文件扩展名:', ext);
+      
       const { generateRawThumbnail } = require('../utils/rawThumbnail');
       
       try {
         const thumbnailBuffer = await generateRawThumbnail(decodedPath, parseInt(width), parseInt(quality));
         
         if (thumbnailBuffer) {
+          console.log('✅ RAW缩略图生成成功，大小:', thumbnailBuffer.length, 'bytes');
           // 成功生成缩略图
           res.set({
             'Content-Type': 'image/jpeg',
@@ -301,9 +334,12 @@ router.get('/thumbnail', async (req, res) => {
           });
           res.send(thumbnailBuffer);
           return;
+        } else {
+          console.log('⚠️  RAW缩略图生成返回null，将使用占位图');
         }
       } catch (error) {
-        console.error('RAW缩略图生成异常:', error.message);
+        console.error('❌ RAW缩略图生成异常:', error.message);
+        console.error('错误堆栈:', error.stack);
       }
       
       // 如果生成失败，继续执行下面的占位图逻辑
@@ -365,51 +401,7 @@ router.get('/:id/preview', async (req, res) => {
   }
 });
 
-// 获取孤立的 RAW 文件（没有对应 JPG 的 RAW）
-router.get('/orphan-raws', async (req, res) => {
-  try {
-    const { repoId } = req.query;
-    const fileService = await getFileService(repoId);
-    const orphanRaws = await fileService.getOrphanRaws();
-    
-    res.json({
-      success: true,
-      data: orphanRaws
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
 
-// 批量删除 RAW 文件
-router.post('/batch-delete-raws', async (req, res) => {
-  try {
-    const { fileIds, repoId } = req.body;
-    
-    if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: '请提供要删除的文件ID列表'
-      });
-    }
-    
-    const fileService = await getFileService(repoId);
-    const result = await fileService.batchDeleteRaws(fileIds);
-    
-    res.json({
-      success: true,
-      data: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
 
 // 打开文件位置（文件夹或文件）
 router.post('/open-location', async (req, res) => {

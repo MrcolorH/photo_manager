@@ -27,11 +27,24 @@ async function getRepos() {
     const data = await fs.readFile(REPOS_CONFIG_PATH, 'utf8');
     return JSON.parse(data);
   } catch {
+    // 根据操作系统设置默认路径
+    let defaultPath;
+    if (process.platform === 'win32') {
+      // Windows: 使用用户图片目录
+      defaultPath = path.join(process.env.USERPROFILE || 'C:\\Users\\Default', 'Pictures', '相机照片');
+    } else if (process.platform === 'darwin') {
+      // macOS: 使用用户图片目录
+      defaultPath = path.join(process.env.HOME || '/Users/username', 'Pictures', '相机照片');
+    } else {
+      // Linux: 使用用户主目录
+      defaultPath = path.join(process.env.HOME || '/home/username', 'Pictures', '相机照片');
+    }
+    
     // 默认仓库
     const defaultRepo = {
       id: 'default',
       name: '默认仓库',
-      path: process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片',
+      path: process.env.PHOTO_BASE_PATH || defaultPath,
       isDefault: true
     };
     await saveRepos([defaultRepo]);
@@ -43,6 +56,27 @@ async function getRepos() {
 async function saveRepos(repos) {
   await ensureDataDir();
   await fs.writeFile(REPOS_CONFIG_PATH, JSON.stringify(repos, null, 2));
+}
+
+// 获取默认照片路径（跨平台兼容）
+function getDefaultPhotoPath() {
+  if (process.env.PHOTO_BASE_PATH) {
+    return process.env.PHOTO_BASE_PATH;
+  }
+  
+  let defaultPath;
+  if (process.platform === 'win32') {
+    // Windows: 使用用户图片目录
+    defaultPath = path.join(process.env.USERPROFILE || 'C:\\Users\\Default', 'Pictures', '相机照片');
+  } else if (process.platform === 'darwin') {
+    // macOS: 使用用户图片目录
+    defaultPath = path.join(process.env.HOME || '/Users/username', 'Pictures', '相机照片');
+  } else {
+    // Linux: 使用用户主目录
+    defaultPath = path.join(process.env.HOME || '/home/username', 'Pictures', '相机照片');
+  }
+  
+  return defaultPath;
 }
 
 // 从存储卡导入照片（支持实时进度，使用 GET 以支持 SSE）
@@ -62,9 +96,13 @@ router.get('/', async (req, res) => {
     
     // 获取目标仓库路径
     const repos = await getRepos();
-    const targetRepo = repoId 
-      ? repos.find(r => r.id === repoId)
-      : repos.find(r => r.isDefault) || repos[0];
+    let targetRepo;
+    
+    if (repoId) {
+      targetRepo = repos.find(r => r.id === repoId);
+    } else {
+      targetRepo = repos.find(r => r.isDefault) || repos[0];
+    }
     
     if (!targetRepo) {
       // SSE 错误格式
@@ -76,7 +114,9 @@ router.get('/', async (req, res) => {
       return res.end();
     }
     
-    const fileService = new FileService(targetRepo.path);
+    // 如果路径是 AUTO，使用默认路径
+    const repoPath = targetRepo.path === 'AUTO' ? getDefaultPhotoPath() : targetRepo.path;
+    const fileService = new FileService(repoPath);
     
     // 设置 SSE 头部
     res.setHeader('Content-Type', 'text/event-stream');
@@ -144,7 +184,23 @@ router.get('/', async (req, res) => {
 // 获取默认导入路径
 router.get('/default-path', async (req, res) => {
   try {
-    const defaultPath = process.env.DEFAULT_IMPORT_PATH || '/Volumes';
+    let defaultPath;
+    if (process.env.DEFAULT_IMPORT_PATH) {
+      defaultPath = process.env.DEFAULT_IMPORT_PATH;
+    } else {
+      // 根据操作系统设置默认导入路径
+      if (process.platform === 'win32') {
+        // Windows: 使用 D:\ 或用户主目录
+        defaultPath = 'D:\\';
+      } else if (process.platform === 'darwin') {
+        // macOS: 使用 /Volumes
+        defaultPath = '/Volumes';
+      } else {
+        // Linux: 使用 /media
+        defaultPath = '/media';
+      }
+    }
+    
     res.json({
       success: true,
       data: {
@@ -352,24 +408,182 @@ router.get('/select-folder', async (req, res) => {
         }
       });
     } else if (platform === 'win32') {
-      // Windows - 使用 PowerShell
-      const command = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.ShowDialog() | Out-Null; $f.SelectedPath"`;
-      const { stdout } = await execPromise(command, { timeout: 60000 });
-      const selectedPath = stdout.trim();
+      // Windows - 使用 PowerShell 和 .NET Framework
+      console.log('开始打开文件夹选择对话框...');
       
-      if (!selectedPath) {
+      // 创建一个临时 PowerShell 脚本文件
+      const tempScriptPath = path.join(__dirname, '../../temp-select-folder.ps1');
+      const resultFilePath = path.join(__dirname, '../../temp-select-result.txt');
+      const psScript = `
+try {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    # 添加 Windows API 用于置顶窗口
+    Add-Type @"
+    using System;
+    using System.Runtime.InteropServices;
+    public class Win32 {
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+        
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+        
+        [DllImport("user32.dll")]
+        public static extern bool IsIconic(IntPtr hWnd);
+        
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+        
+        public const int SW_RESTORE = 9;
+    }
+"@
+    
+    $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+    $folderBrowser.Description = "请选择文件夹"
+    $folderBrowser.ShowNewFolderButton = $true
+    $folderBrowser.RootFolder = [System.Environment+SpecialFolder]::MyComputer
+    
+    # 创建一个临时窗体作为父窗口，确保对话框置顶
+    $tempForm = New-Object System.Windows.Forms.Form
+    $tempForm.TopMost = $true
+    $tempForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $tempForm.Size = New-Object System.Drawing.Size(1, 1)
+    $tempForm.ShowInTaskbar = $false
+    $tempForm.Opacity = 0
+    $tempForm.Show()
+    
+    # 将临时窗体置顶
+    [void][Win32]::SetForegroundWindow($tempForm.Handle)
+    
+    $result = $folderBrowser.ShowDialog($tempForm)
+    
+    # 关闭临时窗体
+    $tempForm.Close()
+    $tempForm.Dispose()
+    
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        # 使用 UTF8 编码写入结果文件
+        $folderBrowser.SelectedPath | Out-File -FilePath "${resultFilePath}" -Encoding UTF8
+        Exit 0
+    } else {
+        Exit 1
+    }
+} catch {
+    Write-Error $_.Exception.Message
+    Exit 2
+}
+`;
+      
+      try {
+        // 写入临时脚本文件（使用 UTF8 BOM 编码）
+        const bom = Buffer.from([0xEF, 0xBB, 0xBF]);
+        const scriptContent = Buffer.concat([bom, Buffer.from(psScript, 'utf8')]);
+        await fs.writeFile(tempScriptPath, scriptContent);
+        
+        console.log('PowerShell 脚本已创建:', tempScriptPath);
+        
+        // 删除之前的结果文件（如果存在）
+        try {
+          await fs.unlink(resultFilePath);
+        } catch (e) {
+          // 文件不存在，忽略
+        }
+        
+        // 执行脚本
+        const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`;
+        console.log('执行命令:', command);
+        
+        const { stdout, stderr } = await execPromise(command, { 
+          timeout: 120000,
+          maxBuffer: 10 * 1024 * 1024
+        });
+        
+        console.log('PowerShell 标准输出:', stdout);
+        if (stderr) {
+          console.log('PowerShell 标准错误:', stderr);
+        }
+        
+        // 从结果文件读取路径
+        let selectedPath = '';
+        try {
+          selectedPath = await fs.readFile(resultFilePath, 'utf8');
+          selectedPath = selectedPath.trim();
+          console.log('从文件读取的路径:', selectedPath);
+          
+          // 删除结果文件
+          await fs.unlink(resultFilePath);
+        } catch (e) {
+          console.log('无法读取结果文件，尝试从 stdout 获取:', e.message);
+          selectedPath = stdout.trim();
+        }
+        
+        // 删除临时脚本文件
+        try {
+          await fs.unlink(tempScriptPath);
+          console.log('临时文件已删除');
+        } catch (e) {
+          console.error('删除临时文件失败:', e.message);
+        }
+        
+        if (!selectedPath || selectedPath.length === 0) {
+          console.log('用户取消选择或返回空路径');
+          return res.json({
+            success: false,
+            error: '用户取消选择'
+          });
+        }
+        
+        console.log('成功选择路径:', selectedPath);
         return res.json({
+          success: true,
+          data: {
+            path: selectedPath
+          }
+        });
+      } catch (error) {
+        console.error('=== PowerShell 执行错误 ===');
+        console.error('错误消息:', error.message);
+        console.error('错误代码:', error.code);
+        console.error('错误信号:', error.signal);
+        console.error('Killed:', error.killed);
+        if (error.stdout) {
+          console.error('标准输出:', error.stdout.toString());
+        }
+        if (error.stderr) {
+          console.error('标准错误:', error.stderr.toString());
+        }
+        console.error('=========================');
+        
+        // 清理临时文件
+        try {
+          await fs.unlink(tempScriptPath);
+        } catch (e) {
+          // 忽略删除错误
+        }
+        try {
+          await fs.unlink(resultFilePath);
+        } catch (e) {
+          // 忽略删除错误
+        }
+        
+        // 判断是否是用户取消（退出码为1）
+        if (error.code === 1 || 
+            (error.message && error.message.includes('Exit code 1')) ||
+            (error.stderr && error.stderr.toString().includes('Exit 1'))) {
+          console.log('检测到用户取消');
+          return res.json({
+            success: false,
+            error: '用户取消选择'
+          });
+        }
+        
+        return res.status(500).json({
           success: false,
-          error: '用户取消选择'
+          error: '打开文件夹选择对话框失败: ' + error.message
         });
       }
-      
-      return res.json({
-        success: true,
-        data: {
-          path: selectedPath
-        }
-      });
     } else {
       // Linux - 使用 zenity
       const command = `zenity --file-selection --directory`;
