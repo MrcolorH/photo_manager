@@ -9,12 +9,12 @@
     "id": "1776403173426",
     "name": "硬盘",
     "path": "/Volumes/EXP/相机存档/",
-    "isDefault": true
+    "isDefault": false
   },
   {
     "id": "1776418196306",
     "name": "fuji",
     "path": "/Users/colorh/Pictures/富士/",
-    "isDefault": false
+    "isDefault": true
   }
 ]

@@ -7,8 +7,9 @@ const { exec, spawn } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 
-// 存储仓库配置文件路径
-const REPOS_CONFIG_PATH = path.join(__dirname, '../../data/repos.json');
+// 存储仓库配置文件路径 - 使用项目根目录的 config 文件夹
+const PROJECT_ROOT = path.join(__dirname, '../..');
+const REPOS_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'repos.json');
 
 // 确保数据目录存在
 async function ensureDataDir() {

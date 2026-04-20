@@ -4,8 +4,9 @@ const path = require('path');
 const fs = require('fs').promises;
 const FileService = require('../services/fileService');
 
-// 存储仓库配置文件路径
-const REPOS_CONFIG_PATH = path.join(__dirname, '../../data/repos.json');
+// 存储仓库配置文件路径 - 使用项目根目录的 config 文件夹
+const PROJECT_ROOT = path.join(__dirname, '../..');
+const REPOS_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'repos.json');
 
 // 读取存储仓库列表
 async function getRepos() {
