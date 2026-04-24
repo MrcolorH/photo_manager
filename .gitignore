@@ -58,6 +58,13 @@ frontend/dist/
 .AppleDouble
 .LSOverride
 
+# Standalone app builds (contains large binaries)
+Standalone/
+CameraManager.app/Contents/Resources/Project/
+
+# DMG and disk images
+*.dmg
+
 # Thumbnails
 ._*
 
