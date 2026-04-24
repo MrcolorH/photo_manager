@@ -1,0 +1,16 @@
+# 示例配置文件 - 请复制为 repos.json 并修改为你的实际路径
+
+[
+  {
+    "id": "example-repo-1",
+    "name": "示例仓库1",
+    "path": "/your/path/to/photos",
+    "isDefault": true
+  },
+  {
+    "id": "example-repo-2",
+    "name": "示例仓库2",
+    "path": "/another/path/to/photos",
+    "isDefault": false
+  }
+]
