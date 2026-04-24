@@ -26,7 +26,14 @@ app.use((req, res, next) => {
 });
 
 // 存储仓库配置文件路径
-const REPOS_CONFIG_PATH = path.join(__dirname, 'data/repos.json');
+// 支持 DATA_DIR 环境变量（用于持久化用户数据）
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const REPOS_CONFIG_PATH = path.join(DATA_DIR, 'repos.json');
+
+// 确保数据目录存在
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 // 读取存储仓库列表
 function getRepos() {
