@@ -11,9 +11,29 @@ v3.1 改进:
 - 前端服务器增加 EADDRINUSE 容错处理
 """
 
-import os, sys, subprocess, webbrowser, threading, time, shutil
+import os, sys, subprocess, webbrowser, threading, time, shutil, ctypes
 from pathlib import Path
 from datetime import datetime
+
+# ============================================================
+# 单实例检测 (Named Mutex)
+# ============================================================
+MUTEX_NAME = "CameraPhotoManager-SingleInstance"
+
+def check_single_instance():
+    """检测是否已有实例在运行，有则弹窗提示并退出"""
+    try:
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        mutex = kernel32.CreateMutexW(None, False, MUTEX_NAME)
+        err = ctypes.get_last_error()
+        if err == 183:  # ERROR_ALREADY_EXISTS
+            ctypes.windll.user32.MessageBoxW(
+                0, "程序已在运行中\n请从系统托盘菜单操作。", "相机照片管理器", 0x40
+            )
+            sys.exit(0)
+        # 不能 CloseHandle 这里关闭 mutex，否则单例保护失效
+    except Exception:
+        pass  # 非 Windows 环境忽略
 
 # ============================================================
 # 配置
@@ -465,6 +485,7 @@ class TrayApp:
 # 入口
 # ============================================================
 def main():
+    check_single_instance()  # 单实例检测，已有运行实例则提示并退出
     log_info("=" * 50)
     log_info(f"{APP_NAME} v3.0 启动")
     log_info(f"Python: {sys.version}")
