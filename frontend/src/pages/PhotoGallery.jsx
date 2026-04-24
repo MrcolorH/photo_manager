@@ -78,8 +78,10 @@ const PhotoGallery = () => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewPhotos, setPreviewPhotos] = useState([]); // 预览用的完整图片列表
   const [previewIndex, setPreviewIndex] = useState(0); // 当前预览图片在previewPhotos中的索引
+  const [previewStartPage, setPreviewStartPage] = useState(1); // previewPhotos对应的起始页码
   const [isLoadingMore, setIsLoadingMore] = useState(false); // 防止重复加载
   const loadDebounceRef = useRef(false); // 防抖引用
+  const currentGlobalIndexRef = useRef(0); // 追踪全局浏览位置（不受数组变化影响）
 
   useEffect(() => {
     fetchRepos();
@@ -213,6 +215,15 @@ const PhotoGallery = () => {
       // 找到目标图片在合并列表中的索引
       const index = allPhotos.findIndex(p => p.id === targetPhoto.id);
       setPreviewIndex(index >= 0 ? index : 0);
+      // 记录起始页码（如果加载了上一页，则起始页是currentPage-1，否则是currentPage）
+      const startPage = currentPage > 1 ? currentPage - 1 : currentPage;
+      setPreviewStartPage(startPage);
+      console.log('初始化预览:', {
+        currentPage,
+        startPage,
+        totalPhotos: allPhotos.length,
+        targetPhotoIndex: index
+      });
       setPreviewVisible(true);
     } catch (error) {
       console.error('加载预览图片失败:', error);
@@ -226,41 +237,68 @@ const PhotoGallery = () => {
   const handlePreviewIndexChange = async (index) => {
     setPreviewIndex(index);
     
-    // 防抖检查
-    if (loadDebounceRef.current) return;
+    // 防抖检查 - 如果正在加载，忽略翻页
+    if (loadDebounceRef.current) {
+      console.log('正在加载中，忽略翻页');
+      return;
+    }
     
     const pageSize = pagination.pageSize;
     const totalPages = Math.ceil(pagination.total / pagination.pageSize);
     const currentPage = pagination.page;
     
-    // 计算当前预览索引对应的外部列表页码（1-based）
-    const targetPage = Math.floor(index / pageSize) + 1;
+    // 更新全局浏览位置（全局索引 = 起始页之前的图片数 + 当前索引）
+    const globalIndex = (previewStartPage - 1) * pageSize + index;
+    currentGlobalIndexRef.current = globalIndex;
+    
+    // 根据previewPhotos的起始页码计算全局页码
+    const targetPage = previewStartPage + Math.floor(index / pageSize);
+    
+    console.log('预览翻页:', {
+      index,
+      previewStartPage,
+      targetPage,
+      currentPage,
+      previewPhotosLength: previewPhotos.length,
+      globalIndex
+    });
     
     // 如果目标页码与当前页码不同，同步更新外部列表分页
     if (targetPage !== currentPage && targetPage >= 1 && targetPage <= totalPages) {
+      console.log('同步列表分页:', currentPage, '->', targetPage);
       setPagination(prev => ({ ...prev, page: targetPage }));
     }
     
-    // 翻到当前预加载范围的最后一张，加载下一页
-    if (index === previewPhotos.length - 1 && currentPage < totalPages) {
-      await loadNextPreviewPage(currentPage + 2);
+    // 计算当前索引在预览列表中的相对位置（第几张）
+    const positionInPreview = index % pageSize;
+    
+    // 如果翻到最后一张，且后面还有页，加载下一页并移除最前面的页
+    if (index === previewPhotos.length - 1) {
+      const nextPageToLoad = previewStartPage + 2; // 当前已有3页（startPage, startPage+1, startPage+2）
+      if (nextPageToLoad <= totalPages && previewPhotos.length >= pageSize * 2) {
+        console.log('触发加载下一页并移除第一页:', nextPageToLoad);
+        await loadNextAndRemoveFirst(nextPageToLoad);
+      }
     }
     
-    // 翻到当前预加载范围的第一张，加载上一页
-    if (index === 0 && currentPage > 1) {
-      await loadPrevPreviewPage(currentPage - 2);
+    // 如果翻到第一张，且前面还有页，加载上一页并移除最后面的页
+    if (index === 0 && previewStartPage > 1) {
+      const prevPageToLoad = previewStartPage - 1;
+      console.log('触发加载上一页并移除最后一页:', prevPageToLoad);
+      await loadPrevAndRemoveLast(prevPageToLoad);
     }
   };
 
-  // 加载下一页到预览列表
-  const loadNextPreviewPage = async (nextPageNum) => {
+  // 加载下一页并移除第一页（保持最多3页）
+  const loadNextAndRemoveFirst = async (nextPageNum) => {
     if (loadDebounceRef.current) return;
     
     try {
       loadDebounceRef.current = true;
       setIsLoadingMore(true);
-      const totalPages = Math.ceil(pagination.total / pagination.pageSize);
-      if (nextPageNum > totalPages) return;
+      const pageSize = pagination.pageSize;
+      
+      console.log('加载下一页并移除第一页:', nextPageNum);
       
       const res = await photoApi.getPhotos(category, {
         page: nextPageNum,
@@ -271,26 +309,48 @@ const PhotoGallery = () => {
       });
       
       if (res.data.success) {
-        setPreviewPhotos(prev => [...prev, ...res.data.data.photos]);
+        const newPhotos = res.data.data.photos;
+        // 移除第一页（前pageSize张图片），添加新页到末尾
+        setPreviewPhotos(prev => {
+          const remaining = prev.slice(pageSize); // 移除第一页
+          return [...remaining, ...newPhotos];
+        });
+        
+        // 更新索引：因为移除了前面的一页，索引需要减去pageSize
+        const newIndex = previewIndex - pageSize;
+        
+        // 更新起始页码：移除了一页，起始页+1
+        setPreviewStartPage(prev => prev + 1);
+        
+        console.log('加载下一页成功，移除第一页，新索引:', newIndex, '新起始页:', previewStartPage + 1);
+        
+        // 立即更新索引位置
+        setTimeout(() => {
+          setPreviewIndex(newIndex);
+          setTimeout(() => {
+            loadDebounceRef.current = false;
+          }, 100);
+        }, 0);
       }
     } catch (error) {
       console.error('加载下一页失败:', error);
+      setIsLoadingMore(false);
+      loadDebounceRef.current = false;
     } finally {
       setIsLoadingMore(false);
-      setTimeout(() => {
-        loadDebounceRef.current = false;
-      }, 1000);
     }
   };
 
-  // 加载上一页到预览列表
-  const loadPrevPreviewPage = async (prevPageNum) => {
+  // 加载上一页并移除最后一页（保持最多3页）
+  const loadPrevAndRemoveLast = async (prevPageNum) => {
     if (loadDebounceRef.current) return;
     
     try {
       loadDebounceRef.current = true;
       setIsLoadingMore(true);
-      if (prevPageNum < 1) return;
+      const pageSize = pagination.pageSize;
+      
+      console.log('加载上一页并移除最后一页:', prevPageNum);
       
       const res = await photoApi.getPhotos(category, {
         page: prevPageNum,
@@ -301,18 +361,35 @@ const PhotoGallery = () => {
       });
       
       if (res.data.success) {
-        const loadedPhotos = res.data.data.photos;
-        setPreviewPhotos(prev => [...loadedPhotos, ...prev]);
-        // 更新索引（因为前面插入了新图片）
-        setPreviewIndex(prev => prev + loadedPhotos.length);
+        const newPhotos = res.data.data.photos;
+        // 移除最后一页，添加新页到开头
+        setPreviewPhotos(prev => {
+          const remaining = prev.slice(0, -pageSize); // 移除最后一页
+          return [...newPhotos, ...remaining];
+        });
+        
+        // 更新索引：因为前面添加了一页，索引需要加上pageSize
+        const newIndex = previewIndex + pageSize;
+        
+        // 更新起始页码：前面添加了一页，起始页-1
+        setPreviewStartPage(prevPageNum);
+        
+        console.log('加载上一页成功，移除最后一页，新索引:', newIndex, '新起始页:', prevPageNum);
+        
+        // 立即更新索引位置
+        setTimeout(() => {
+          setPreviewIndex(newIndex);
+          setTimeout(() => {
+            loadDebounceRef.current = false;
+          }, 100);
+        }, 0);
       }
     } catch (error) {
       console.error('加载上一页失败:', error);
+      setIsLoadingMore(false);
+      loadDebounceRef.current = false;
     } finally {
       setIsLoadingMore(false);
-      setTimeout(() => {
-        loadDebounceRef.current = false;
-      }, 1000);
     }
   };
 
