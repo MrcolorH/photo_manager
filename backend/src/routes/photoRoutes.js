@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = fs.promises;
 const FileService = require('../services/fileService');
 
 // 存储仓库配置文件路径
@@ -10,7 +11,7 @@ const REPOS_CONFIG_PATH = path.join(__dirname, '../../data/repos.json');
 // 读取存储仓库列表
 async function getRepos() {
   try {
-    const data = await fs.readFile(REPOS_CONFIG_PATH, 'utf8');
+    const data = await fsPromises.readFile(REPOS_CONFIG_PATH, 'utf8');
     return JSON.parse(data);
   } catch {
     const defaultRepo = {
@@ -192,7 +193,7 @@ router.get('/preview', async (req, res) => {
     
     // 检查文件是否存在
     try {
-      await fs.access(decodedPath);
+      await fsPromises.access(decodedPath);
     } catch {
       return res.status(404).json({
         success: false,
@@ -200,14 +201,93 @@ router.get('/preview', async (req, res) => {
       });
     }
     
-    // 直接发送文件，让浏览器决定如何处理
-    // 视频会在浏览器中播放，RAW 文件会显示原始数据或提示下载
-    res.sendFile(decodedPath);
+    // 获取文件信息
+    const stat = await fsPromises.stat(decodedPath);
+    const fileSize = stat.size;
+    const ext = path.extname(decodedPath).toLowerCase();
+    
+    // 判断是否为视频文件
+    const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'];
+    const isVideo = videoExtensions.includes(ext);
+    
+    // 设置 Content-Type
+    if (isVideo) {
+      const mimeTypes = {
+        '.mp4': 'video/mp4',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska',
+        '.webm': 'video/webm',
+        '.m4v': 'video/mp4',
+        '.3gp': 'video/3gpp'
+      };
+      res.setHeader('Content-Type', mimeTypes[ext] || 'video/mp4');
+    }
+    
+    // 支持 Range 请求（视频流式播放）
+    const range = req.headers.range;
+    
+    if (range && isVideo) {
+      // 解析 Range 头
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      
+      // 验证范围
+      if (start >= fileSize) {
+        return res.status(416).json({
+          success: false,
+          error: 'Range not satisfiable'
+        });
+      }
+      
+      const chunkSize = end - start + 1;
+      
+      // 设置响应头
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': res.getHeader('Content-Type') || 'video/mp4',
+        'Cache-Control': 'public, max-age=3600'
+      });
+      
+      // 使用流式传输，只读取请求的范围
+      const stream = fs.createReadStream(decodedPath, { start, end });
+      stream.pipe(res);
+      
+      stream.on('error', (err) => {
+        console.error('视频流读取错误:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: '视频流读取失败' });
+        }
+      });
+    } else {
+      // 非视频文件或完整请求，使用流式传输
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Length', fileSize);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      
+      // 使用流式传输，避免一次性加载大文件到内存
+      const stream = fs.createReadStream(decodedPath);
+      stream.pipe(res);
+      
+      stream.on('error', (err) => {
+        console.error('文件流读取错误:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: '文件读取失败' });
+        }
+      });
+    }
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error('预览文件失败:', error);
+    // 只有在响应还未发送时才发送错误响应
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
   }
 });
 
@@ -228,7 +308,7 @@ router.get('/thumbnail', async (req, res) => {
     
     // 检查文件是否存在
     try {
-      await fs.access(decodedPath);
+      await fsPromises.access(decodedPath);
     } catch {
       return res.status(404).json({
         success: false,
@@ -392,12 +472,102 @@ router.get('/:id/preview', async (req, res) => {
     const { id } = req.params;
     const filePath = Buffer.from(id, 'base64').toString('utf8');
     
-    res.sendFile(filePath);
+    // 检查文件是否存在
+    try {
+      await fsPromises.access(filePath);
+    } catch {
+      return res.status(404).json({
+        success: false,
+        error: '文件不存在'
+      });
+    }
+    
+    // 获取文件信息
+    const stat = await fsPromises.stat(filePath);
+    const fileSize = stat.size;
+    const ext = path.extname(filePath).toLowerCase();
+    
+    // 判断是否为视频文件
+    const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'];
+    const isVideo = videoExtensions.includes(ext);
+    
+    // 设置 Content-Type
+    if (isVideo) {
+      const mimeTypes = {
+        '.mp4': 'video/mp4',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska',
+        '.webm': 'video/webm',
+        '.m4v': 'video/mp4',
+        '.3gp': 'video/3gpp'
+      };
+      res.setHeader('Content-Type', mimeTypes[ext] || 'video/mp4');
+    }
+    
+    // 支持 Range 请求（视频流式播放）
+    const range = req.headers.range;
+    
+    if (range && isVideo) {
+      // 解析 Range 头
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      
+      // 验证范围
+      if (start >= fileSize) {
+        return res.status(416).json({
+          success: false,
+          error: 'Range not satisfiable'
+        });
+      }
+      
+      const chunkSize = end - start + 1;
+      
+      // 设置响应头
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': res.getHeader('Content-Type') || 'video/mp4',
+        'Cache-Control': 'public, max-age=3600'
+      });
+      
+      // 使用流式传输，只读取请求的范围
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.pipe(res);
+      
+      stream.on('error', (err) => {
+        console.error('视频流读取错误:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: '视频流读取失败' });
+        }
+      });
+    } else {
+      // 非视频文件或完整请求，使用流式传输
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Length', fileSize);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      
+      // 使用流式传输，避免一次性加载大文件到内存
+      const stream = fs.createReadStream(filePath);
+      stream.pipe(res);
+      
+      stream.on('error', (err) => {
+        console.error('文件流读取错误:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: '文件读取失败' });
+        }
+      });
+    }
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error('预览文件失败:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
   }
 });
 
@@ -420,7 +590,7 @@ router.post('/open-location', async (req, res) => {
     
     // 检查文件是否存在
     try {
-      await fs.access(decodedPath);
+      await fsPromises.access(decodedPath);
     } catch {
       return res.status(404).json({
         success: false,
@@ -506,7 +676,7 @@ router.post('/batch-export', async (req, res) => {
         
         // 检查源文件是否存在
         try {
-          await fs.access(sourcePath);
+          await fsPromises.access(sourcePath);
         } catch {
           results.failed.push({
             id: fileId,
@@ -521,7 +691,7 @@ router.post('/batch-export', async (req, res) => {
         
         // 检查目标文件是否已存在（增量模式）
         try {
-          await fs.access(destPath);
+          await fsPromises.access(destPath);
           results.skipped.push({
             id: fileId,
             name: fileName,
@@ -533,7 +703,7 @@ router.post('/batch-export', async (req, res) => {
         }
         
         // 复制文件
-        await fs.copyFile(sourcePath, destPath);
+        await fsPromises.copyFile(sourcePath, destPath);
         results.success.push({
           id: fileId,
           name: fileName,

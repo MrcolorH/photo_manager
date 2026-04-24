@@ -20,7 +20,8 @@ import {
   Modal,
   Form,
   Radio,
-  Table
+  Table,
+  Checkbox
 } from 'antd';
 import {
   FolderOpenOutlined,
@@ -69,6 +70,9 @@ const ImportPage = () => {
   
   // 存储卡路径选择
   const [sourcePathSelecting, setSourcePathSelecting] = useState(false);
+
+  // 自动重命名选项
+  const [autoRename, setAutoRename] = useState(false);
 
   // 处理存储卡路径的文件夹选择（使用后端接口）
   const handleSourceFolderSelect = async () => {
@@ -235,7 +239,7 @@ const ImportPage = () => {
         setProgressInfo(progress);
       });
       
-      const res = await importApi.importFromCard(sourcePath.trim(), selectedRepo);
+      const res = await importApi.importFromCard(sourcePath.trim(), selectedRepo, autoRename);
       
       if (res.data.success) {
         setImportResult(res.data.data);
@@ -361,6 +365,17 @@ const ImportPage = () => {
               </Space.Compact>
               <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
                 默认扫描路径: {defaultPath} | 点击"选择文件夹"按钮打开系统对话框，自动获取完整路径
+              </div>
+            </div>
+
+            <div style={{ padding: '12px 16px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
+              <Checkbox checked={autoRename} onChange={(e) => setAutoRename(e.target.checked)}>
+                自动重命名以避免重复（将目录层级编码到文件名中）
+              </Checkbox>
+              <div style={{ marginTop: 6, marginLeft: 24, color: '#999', fontSize: 12, lineHeight: 1.6 }}>
+                勾选后，系统会根据文件所在子文件夹的路径自动重命名，
+                例如 <code>子文件夹1/1.jpg</code> → <code>子文件夹1_1.jpg</code>，
+                避免不同子文件夹中的同名文件被跳过。
               </div>
             </div>
 

@@ -125,6 +125,17 @@ async function fileExists(filePath) {
   }
 }
 
+// 根据相对路径生成重命名后的文件名（将目录层级编码到文件名中）
+function generateRenamedFilename(relativePath) {
+  // 提取扩展名
+  const ext = path.extname(relativePath);
+  // 去掉扩展名的部分
+  const nameWithoutExt = relativePath.slice(0, -ext.length || relativePath.length);
+  // 将路径分隔符（\ 和 /）替换为 _
+  const safeName = nameWithoutExt.replace(/[/\\]/g, '_');
+  return safeName + ext;
+}
+
 // 比较两个文件是否相同（通过文件大小和修改时间）
 async function isSameFile(srcPath, destPath) {
   try {
@@ -150,5 +161,6 @@ module.exports = {
   deleteFile,
   getFileNameWithoutExt,
   fileExists,
-  isSameFile
+  isSameFile,
+  generateRenamedFilename
 };

@@ -130,4 +130,16 @@ app.listen(PORT, () => {
   console.log(`服务器运行在 http://localhost:${PORT}`);
 });
 
+// 全局错误处理 - 防止未捕获异常导致服务崩溃
+process.on('uncaughtException', (error) => {
+  console.error('未捕获的异常:', error);
+  console.error('错误堆栈:', error.stack);
+  // 记录错误但不退出进程，保持服务运行
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('未处理的Promise拒绝:', reason);
+  // 记录错误但不退出进程，保持服务运行
+});
+
 module.exports = app;

@@ -36,11 +36,11 @@ export const photoApi = {
 // 导入相关API
 export const importApi = {
   // 从存储卡导入（使用 EventSource 进行实时进度跟踪）
-  importFromCard: (sourcePath, repoId) => {
+  importFromCard: (sourcePath, repoId, autoRename = false) => {
     return new Promise((resolve, reject) => {
       // 构建完整的 URL
       const baseUrl = window.location.origin;
-      const url = `${baseUrl}/api/import?sourcePath=${encodeURIComponent(sourcePath)}&repoId=${repoId || ''}`;
+      const url = `${baseUrl}/api/import?sourcePath=${encodeURIComponent(sourcePath)}&repoId=${repoId || ''}&autoRename=${autoRename}`;
       
       console.log('开始 SSE 连接:', url);
       

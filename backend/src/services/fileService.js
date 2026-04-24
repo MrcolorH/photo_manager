@@ -1,6 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { scanDirectory, ensureDir, copyFile, deleteFile, getFileNameWithoutExt, fileExists, getFileType } = require('../utils/fileUtils');
+const { scanDirectory, ensureDir, copyFile, deleteFile, getFileNameWithoutExt, fileExists, getFileType, generateRenamedFilename } = require('../utils/fileUtils');
 
 class FileService {
   constructor(basePath) {
@@ -21,7 +21,7 @@ class FileService {
   }
 
   // 从存储卡导入照片（增量导入，不覆盖已有文件）
-  async importFromCard(sourcePath, progressCallback = null) {
+  async importFromCard(sourcePath, progressCallback = null, autoRename = false) {
     console.log('开始扫描目录:', sourcePath);
     
     // 扫描存储卡中的所有媒体文件
@@ -72,61 +72,88 @@ class FileService {
       });
     }
 
-    // 按类型分类复制文件
+    // 并发控制：同时最多处理3个文件，避免内存溢出
+    const CONCURRENCY_LIMIT = 3;
+    const processingQueue = [];
+    
+    // 按类型分类复制文件，使用并发控制
     for (const file of files) {
       console.log(`处理文件 ${processedFiles + 1}/${totalFiles}: ${file.name}`);
       
-      try {
-        const targetDir = this.getCategoryPath(file.type);
-        const targetPath = path.join(targetDir, file.name);
-        const copyResult = await copyFile(file.path, targetPath);
-        
-        if (copyResult.skipped) {
-          // 文件被跳过（已存在）
-          results.skipped.push({
-            originalPath: file.path,
-            newPath: copyResult.path,
-            name: file.name,
-            size: file.size,
-            reason: copyResult.reason || 'already_exists'
+      // 如果处理队列已满，等待一个任务完成
+      while (processingQueue.length >= CONCURRENCY_LIMIT) {
+        await Promise.race(processingQueue);
+        // 清理已完成的Promise
+        processingQueue.splice(0, processingQueue.length, ...processingQueue.filter(p => p._pending));
+      }
+      
+      // 创建文件处理Promise
+      const processPromise = (async () => {
+        try {
+          const targetDir = this.getCategoryPath(file.type);
+          // 根据 autoRename 决定是否使用重命名后的文件名
+          const targetFileName = autoRename ? generateRenamedFilename(file.relativePath) : file.name;
+          const targetPath = path.join(targetDir, targetFileName);
+          const copyResult = await copyFile(file.path, targetPath);
+          
+          if (copyResult.skipped) {
+            // 文件被跳过（已存在）
+            results.skipped.push({
+              originalPath: file.path,
+              newPath: copyResult.path,
+              name: targetFileName,
+              size: file.size,
+              reason: copyResult.reason || 'already_exists'
+            });
+            console.log(`  文件已存在，跳过: ${targetFileName}`);
+          } else {
+            // 文件成功复制
+            results[file.type].push({
+              originalPath: file.path,
+              newPath: copyResult.path,
+              name: targetFileName,
+              size: file.size
+            });
+            console.log(`  文件复制成功: ${targetFileName}`);
+          }
+        } catch (error) {
+          results.errors.push({
+            file: file.name,
+            error: error.message
           });
-          console.log(`  文件已存在，跳过: ${file.name}`);
-        } else {
-          // 文件成功复制
-          results[file.type].push({
-            originalPath: file.path,
-            newPath: copyResult.path,
-            name: file.name,
-            size: file.size
-          });
-          console.log(`  文件复制成功: ${file.name}`);
+          console.error(`  文件处理失败: ${file.name}`, error.message);
+        } finally {
+          // 更新进度
+          processedFiles++;
+          if (progressCallback) {
+            const elapsedTime = (Date.now() - startTime) / 1000; // 秒
+            const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
+            const remainingFiles = totalFiles - processedFiles;
+            const estimatedTimeRemaining = avgTimePerFile * remainingFiles; // 秒
+            
+            progressCallback({
+              total: totalFiles,
+              processed: processedFiles,
+              remaining: remainingFiles,
+              currentFile: file.name,
+              estimatedTimeRemaining: Math.round(estimatedTimeRemaining),
+              percentage: Math.round((processedFiles / totalFiles) * 100)
+            });
+          }
         }
-      } catch (error) {
-        results.errors.push({
-          file: file.name,
-          error: error.message
-        });
-        console.error(`  文件处理失败: ${file.name}`, error.message);
-      }
-
-      // 更新进度
-      processedFiles++;
-      if (progressCallback) {
-        const elapsedTime = (Date.now() - startTime) / 1000; // 秒
-        const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
-        const remainingFiles = totalFiles - processedFiles;
-        const estimatedTimeRemaining = avgTimePerFile * remainingFiles; // 秒
-        
-        progressCallback({
-          total: totalFiles,
-          processed: processedFiles,
-          remaining: remainingFiles,
-          currentFile: file.name,
-          estimatedTimeRemaining: Math.round(estimatedTimeRemaining),
-          percentage: Math.round((processedFiles / totalFiles) * 100)
-        });
-      }
+      })();
+      
+      // 标记为pending状态，用于清理
+      processPromise._pending = true;
+      processPromise.finally(() => {
+        processPromise._pending = false;
+      });
+      
+      processingQueue.push(processPromise);
     }
+    
+    // 等待所有剩余任务完成
+    await Promise.all(processingQueue);
     
     console.log('导入完成:', {
       jpg: results.jpg.length,
