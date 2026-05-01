@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Row,
   Col,
@@ -34,7 +34,7 @@ import {
   DownloadOutlined,
   FolderAddOutlined
 } from '@ant-design/icons';
-import { PhotoProvider, PhotoView } from 'react-photo-view';
+import { PhotoSlider } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { photoApi, importApi } from '../api';
 
@@ -69,10 +69,17 @@ const PhotoGallery = () => {
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletePhotoData, setDeletePhotoData] = useState(null);
   const [syncDeleteRaw, setSyncDeleteRaw] = useState(false);
+  const [deleteFromPreview, setDeleteFromPreview] = useState(false);
   
   // 批量删除相关
   const [batchDeleteModalVisible, setBatchDeleteModalVisible] = useState(false);
   const [batchSyncDeleteRaw, setBatchSyncDeleteRaw] = useState(false);
+
+  // 跨页预览缓存
+  const [cachedPhotos, setCachedPhotos] = useState([]);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const cachedPagesRef = useRef({ min: 0, max: 0 });
 
   useEffect(() => {
     fetchRepos();
@@ -127,23 +134,49 @@ const PhotoGallery = () => {
     fetchPhotos();
   }, [fetchPhotos]);
 
+  useEffect(() => {
+    setCachedPhotos([]);
+    cachedPagesRef.current = { min: 0, max: 0 };
+  }, [category, sortBy, sortOrder, selectedRepo]);
+
   const handleDelete = (photo) => {
     setDeletePhotoData(photo);
     setSyncDeleteRaw(false); // 默认不勾选
     setDeleteModalVisible(true);
   };
 
+  const handlePreviewDelete = () => {
+    const currentPhoto = cachedPhotos[previewIndex];
+    if (!currentPhoto) return;
+    setDeleteFromPreview(true);
+    handleDelete(currentPhoto);
+  };
+
   const confirmDelete = async () => {
     try {
       const res = await photoApi.deletePhoto(
         deletePhotoData.id, 
-        syncDeleteRaw, // 传递用户选择的值
+        syncDeleteRaw,
         selectedRepo
       );
       if (res.data.success) {
         message.success('删除成功');
         setDeleteModalVisible(false);
-        fetchPhotos();
+        if (deleteFromPreview) {
+          setDeleteFromPreview(false);
+          const updated = cachedPhotos.filter(p => p.id !== deletePhotoData.id);
+          if (updated.length === 0) {
+            setPreviewVisible(false);
+            fetchPhotos();
+          } else {
+            const newIndex = Math.min(previewIndex, updated.length - 1);
+            setCachedPhotos(updated);
+            setPreviewIndex(newIndex);
+            fetchPhotos();
+          }
+        } else {
+          fetchPhotos();
+        }
       }
     } catch (error) {
       message.error('删除失败');
@@ -151,16 +184,103 @@ const PhotoGallery = () => {
     }
   };
 
-  const handlePreview = (photo) => {
-    // 视频文件在新标签页打开
+  const fetchPagePhotos = useCallback(async (page) => {
+    if (!selectedRepo) return [];
+    try {
+      const res = await photoApi.getPhotos(category, {
+        page,
+        pageSize: pagination.pageSize,
+        sortBy,
+        sortOrder,
+        repoId: selectedRepo
+      });
+      if (res.data.success) {
+        return (res.data.data.photos || []).map(photo => ({ ...photo, _page: page }));
+      }
+    } catch (error) {
+      console.error(`获取第${page}页照片失败:`, error);
+    }
+    return [];
+  }, [category, pagination.pageSize, sortBy, sortOrder, selectedRepo]);
+
+  const loadPreviewPages = useCallback(async (centerPage) => {
+    const totalPages = Math.ceil(pagination.total / pagination.pageSize);
+    const pagesToFetch = [];
+    if (centerPage > 1) pagesToFetch.push(centerPage - 1);
+    pagesToFetch.push(centerPage);
+    if (centerPage < totalPages) pagesToFetch.push(centerPage + 1);
+
+    const results = await Promise.all(pagesToFetch.map(p => fetchPagePhotos(p)));
+    const merged = results.flat();
+
+    setCachedPhotos(merged);
+    cachedPagesRef.current = {
+      min: pagesToFetch[0],
+      max: pagesToFetch[pagesToFetch.length - 1]
+    };
+    return merged;
+  }, [pagination.total, pagination.pageSize, fetchPagePhotos]);
+
+  const preloadingRef = useRef(false);
+
+  const preloadAdjacentPage = useCallback(async (direction) => {
+    if (preloadingRef.current) return;
+    preloadingRef.current = true;
+    try {
+      const cached = cachedPagesRef.current;
+      const totalPages = Math.ceil(pagination.total / pagination.pageSize);
+
+      if (direction === 'next' && cached.max < totalPages) {
+        const newPage = cached.max + 1;
+        cachedPagesRef.current = { min: cached.min, max: newPage };
+        const photos = await fetchPagePhotos(newPage);
+        setCachedPhotos(prev => [...prev, ...photos]);
+      }
+
+      if (direction === 'prev' && cached.min > 1) {
+        const newPage = cached.min - 1;
+        cachedPagesRef.current = { min: newPage, max: cached.max };
+        const photos = await fetchPagePhotos(newPage);
+        setCachedPhotos(prev => [...photos, ...prev]);
+        setPreviewIndex(prev => prev + photos.length);
+      }
+    } finally {
+      preloadingRef.current = false;
+    }
+  }, [pagination.total, pagination.pageSize, fetchPagePhotos]);
+
+  const handlePreviewIndexChange = useCallback(async (index) => {
+    setPreviewIndex(index);
+
+    const currentPhoto = cachedPhotos[index];
+    if (!currentPhoto) return;
+
+    if (currentPhoto._page !== pagination.page) {
+      setPagination(prev => ({ ...prev, page: currentPhoto._page }));
+    }
+
+    const photoIndexOnPage = cachedPhotos
+      .filter(p => p._page === currentPhoto._page)
+      .findIndex(p => p.id === currentPhoto.id);
+
+    if (photoIndexOnPage >= pagination.pageSize - 3) {
+      await preloadAdjacentPage('next');
+    }
+    if (photoIndexOnPage <= 2) {
+      await preloadAdjacentPage('prev');
+    }
+  }, [cachedPhotos, pagination.page, pagination.pageSize, preloadAdjacentPage]);
+
+  const handlePreview = async (photo) => {
     if (category === 'video') {
       window.open(photo.url, '_blank');
     } else if (category === 'raw') {
-      // RAW文件使用系统命令直接打开
       handleOpenLocation(photo, 'file');
     } else {
-      // JPG使用Modal预览
-      setPreviewPhoto(photo);
+      const photoPage = photo._page || pagination.page;
+      const merged = await loadPreviewPages(photoPage);
+      const idx = merged.findIndex(p => p.id === photo.id);
+      setPreviewIndex(idx >= 0 ? idx : 0);
       setPreviewVisible(true);
     }
   };
@@ -455,40 +575,6 @@ const PhotoGallery = () => {
           <Empty description="暂无照片" style={{ padding: 100 }} />
         ) : (
           <>
-            <PhotoProvider
-              maskOpacity={0.5}
-              bannerVisible={true}
-              toolbarRender={({ rotate, onRotate, onScale, scale }) => {
-                return (
-                  <>
-                    <Button
-                      type="text"
-                      icon={<span style={{ fontSize: 20 }}>↺</span>}
-                      onClick={() => onRotate(rotate - 90)}
-                      style={{ color: '#fff' }}
-                    />
-                    <Button
-                      type="text"
-                      icon={<span style={{ fontSize: 20 }}>↻</span>}
-                      onClick={() => onRotate(rotate + 90)}
-                      style={{ color: '#fff' }}
-                    />
-                    <Button
-                      type="text"
-                      icon={<span style={{ fontSize: 20 }}>+</span>}
-                      onClick={() => onScale(scale + 0.5)}
-                      style={{ color: '#fff' }}
-                    />
-                    <Button
-                      type="text"
-                      icon={<span style={{ fontSize: 20 }}>-</span>}
-                      onClick={() => onScale(scale - 0.5)}
-                      style={{ color: '#fff' }}
-                    />
-                  </>
-                );
-              }}
-            >
               <Row gutter={[12, 12]} style={{ margin: 0 }}>
                 {photos.map(photo => (
                   <Col xs={12} sm={8} md={6} lg={4} xl={3} xxl={2} key={photo.id} style={{ minWidth: 0 }}>
@@ -601,11 +687,14 @@ const PhotoGallery = () => {
                                 />
                               </div>
                             ) : (
-                              <PhotoView src={photo.url}>
+                              <div
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => handlePreview({ ...photo, _page: pagination.page })}
+                              >
                                 <Image
                                   alt={photo.name}
                                   src={photo.thumbnailUrl}
-                                  style={{ height: 120, objectFit: 'cover', cursor: 'pointer' }}
+                                  style={{ height: 120, objectFit: 'cover' }}
                                   fallback="/placeholder-raw.svg"
                                   preview={false}
                                   placeholder={
@@ -620,7 +709,7 @@ const PhotoGallery = () => {
                                     </div>
                                   }
                                 />
-                              </PhotoView>
+                              </div>
                             )
                           )}
                         </div>
@@ -665,7 +754,6 @@ const PhotoGallery = () => {
                   </Col>
                 ))}
               </Row>
-            </PhotoProvider>
           </>
         )}
       </div>
@@ -737,10 +825,11 @@ const PhotoGallery = () => {
         title="确认删除"
         open={deleteModalVisible}
         onOk={confirmDelete}
-        onCancel={() => setDeleteModalVisible(false)}
+        onCancel={() => { setDeleteModalVisible(false); setDeleteFromPreview(false); }}
         okText="删除"
         okType="danger"
         cancelText="取消"
+        zIndex={3000}
       >
         {deletePhotoData && (
           <div>
@@ -790,6 +879,55 @@ const PhotoGallery = () => {
           )}
         </div>
       </Modal>
+
+      <PhotoSlider
+        images={cachedPhotos.map(photo => ({
+          key: photo.id,
+          src: photo.url,
+        }))}
+        index={previewIndex}
+        visible={previewVisible}
+        onIndexChange={handlePreviewIndexChange}
+        onClose={() => setPreviewVisible(false)}
+        maskOpacity={0.5}
+        bannerVisible={true}
+        toolbarRender={({ rotate, onRotate, onScale, scale }) => {
+          return (
+            <>
+              <Button
+                type="text"
+                icon={<span style={{ fontSize: 20 }}>↺</span>}
+                onClick={() => onRotate(rotate - 90)}
+                style={{ color: '#fff' }}
+              />
+              <Button
+                type="text"
+                icon={<span style={{ fontSize: 20 }}>↻</span>}
+                onClick={() => onRotate(rotate + 90)}
+                style={{ color: '#fff' }}
+              />
+              <Button
+                type="text"
+                icon={<span style={{ fontSize: 20 }}>+</span>}
+                onClick={() => onScale(scale + 0.5)}
+                style={{ color: '#fff' }}
+              />
+              <Button
+                type="text"
+                icon={<span style={{ fontSize: 20 }}>-</span>}
+                onClick={() => onScale(scale - 0.5)}
+                style={{ color: '#fff' }}
+              />
+              <Button
+                type="text"
+                icon={<DeleteOutlined style={{ fontSize: 20 }} />}
+                onClick={handlePreviewDelete}
+                style={{ color: '#fff', marginLeft: 8 }}
+              />
+            </>
+          );
+        }}
+      />
     </>
   );
 };

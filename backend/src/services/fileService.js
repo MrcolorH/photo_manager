@@ -5,11 +5,37 @@ const { scanDirectory, ensureDir, copyFile, deleteFile, getFileNameWithoutExt, f
 class FileService {
   constructor(basePath) {
     this.basePath = basePath;
+    this._scanCache = new Map();
+    this._cacheTTL = 5000;
   }
 
   // 获取分类目录路径
   getCategoryPath(category) {
     return path.join(this.basePath, category);
+  }
+
+  _getCachedScan(categoryPath) {
+    const cached = this._scanCache.get(categoryPath);
+    if (cached && Date.now() - cached.time < this._cacheTTL) {
+      return cached.files;
+    }
+    return null;
+  }
+
+  async scanDirectoryCached(categoryPath) {
+    const cached = this._getCachedScan(categoryPath);
+    if (cached) return cached;
+    const files = await scanDirectory(categoryPath);
+    this._scanCache.set(categoryPath, { files, time: Date.now() });
+    return files;
+  }
+
+  invalidateScanCache(categoryPath) {
+    if (categoryPath) {
+      this._scanCache.delete(categoryPath);
+    } else {
+      this._scanCache.clear();
+    }
   }
 
   // 初始化分类目录
@@ -151,7 +177,7 @@ class FileService {
       return { photos: [], total: 0, page, pageSize };
     }
 
-    const files = await scanDirectory(categoryPath);
+    const files = await this.scanDirectoryCached(categoryPath);
     
     // 只返回当前分类的文件
     const photos = files
@@ -233,6 +259,8 @@ class FileService {
       }
     }
 
+    this.invalidateScanCache();
+
     return {
       success: true,
       deletedFiles
@@ -301,6 +329,10 @@ class FileService {
       } catch (error) {
         results.failed.push({ id: fileId, reason: error.message });
       }
+    }
+
+    if (results.success.length > 0) {
+      this.invalidateScanCache();
     }
 
     return results;
@@ -408,6 +440,10 @@ class FileService {
       }
     }
     
+    if (result.success.length > 0) {
+      this.invalidateScanCache();
+    }
+
     return result;
   }
 }

@@ -9,6 +9,7 @@ const importRoutes = require('./routes/importRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isStandalone = process.env.STANDALONE === 'true';
 
 // 中间件
 app.use(cors({
@@ -66,6 +67,20 @@ app.use('/api/import', importRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: '服务器运行正常' });
 });
+
+// 独立版本：提供前端静态文件
+if (isStandalone) {
+  const frontendDist = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendDist));
+  
+  // 所有非 API 请求返回前端 index.html
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // 错误处理
 app.use((err, req, res, next) => {

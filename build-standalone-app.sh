@@ -28,25 +28,36 @@ echo "[2/6] 复制后端代码..."
 rsync -a --exclude='.git' --exclude='node_modules/.cache' \
     "$SCRIPT_DIR/backend/" "$RESOURCES_DIR/Project/backend/"
 
-# 3. 复制前端代码和依赖
-echo "[3/6] 复制前端代码..."
+# 3. 构建前端为静态文件
+echo "[3/7] 构建前端..."
+cd "$SCRIPT_DIR/frontend"
+npm run build
+echo "前端构建完成"
+
+# 4. 复制后端代码和依赖
+echo "[4/7] 复制后端代码..."
+rsync -a --exclude='.git' --exclude='node_modules/.cache' \
+    "$SCRIPT_DIR/backend/" "$RESOURCES_DIR/Project/backend/"
+
+# 5. 复制前端代码（包含构建后的 dist）
+echo "[5/7] 复制前端代码..."
 rsync -a --exclude='.git' --exclude='node_modules/.cache' \
     "$SCRIPT_DIR/frontend/" "$RESOURCES_DIR/Project/frontend/"
 
-# 4. 复制 Node.js 运行时
-echo "[4/6] 复制 Node.js 运行时..."
+# 5. 复制 Node.js 运行时
+echo "[6/7] 复制 Node.js 运行时..."
 cp "$NODE_PATH" "$RESOURCES_DIR/Project/node"
 chmod +x "$RESOURCES_DIR/Project/node"
 
-# 5. 创建内嵌启动脚本
-echo "[5/6] 创建启动脚本..."
+# 6. 创建内嵌启动脚本
+echo "[7/7] 创建启动脚本..."
 cat > "$RESOURCES_DIR/Project/start.sh" << 'STARTEOF'
 #!/bin/bash
 APP_ROOT="$(cd "$(dirname "$0")" && pwd)"
 NODE="$APP_ROOT/node"
 LOG_FILE="/tmp/camera-manager.log"
 
-echo "[$(date)] 开始启动相机管理后台..." > "$LOG_FILE"
+echo "[$(date)] 开始启动相机管理后台 (独立版)..." > "$LOG_FILE"
 echo "[$(date)] Node 路径: $NODE" >> "$LOG_FILE"
 echo "[$(date)] App 根目录: $APP_ROOT" >> "$LOG_FILE"
 
@@ -58,26 +69,18 @@ fi
 
 "$NODE" -v >> "$LOG_FILE" 2>&1
 
-# 并行启动后端和前端
+# 启动后端（同时提供前端静态文件）
 (
   cd "$APP_ROOT/backend"
-  echo "[$(date)] 启动后端服务 (端口 9901)..." >> "$LOG_FILE"
-  PORT=9901 nohup "$NODE" src/app.js >> "$LOG_FILE" 2>&1 &
+  echo "[$(date)] 启动后端服务 (端口 9901，包含前端静态文件)..." >> "$LOG_FILE"
+  PORT=9901 STANDALONE=true nohup "$NODE" src/app.js >> "$LOG_FILE" 2>&1 &
   echo $! > /tmp/camera-manager-backend.pid
-) &
-
-(
-  cd "$APP_ROOT/frontend"
-  echo "[$(date)] 启动前端服务 (端口 9900)..." >> "$LOG_FILE"
-  nohup "$NODE" "$APP_ROOT/frontend/node_modules/.bin/vite" --port 9900 >> "$LOG_FILE" 2>&1 &
-  echo $! > /tmp/camera-manager-frontend.pid
 ) &
 
 sleep 1
 
 BACKEND_PID=$(cat /tmp/camera-manager-backend.pid 2>/dev/null)
-FRONTEND_PID=$(cat /tmp/camera-manager-frontend.pid 2>/dev/null)
-echo "[$(date)] 启动进程已创建 (后端: $BACKEND_PID, 前端: $FRONTEND_PID)" >> "$LOG_FILE"
+echo "[$(date)] 启动进程已创建 (后端: $BACKEND_PID)" >> "$LOG_FILE"
 STARTEOF
 chmod +x "$RESOURCES_DIR/Project/start.sh"
 
@@ -103,15 +106,13 @@ stop_service() {
     fi
 }
 stop_service /tmp/camera-manager-backend.pid 9901
-stop_service /tmp/camera-manager-frontend.pid 9900
 pkill -f "node src/app.js" 2>/dev/null
-pkill -f "vite --port 9900" 2>/dev/null
 echo "[$(date)] 所有服务已停止" >> /tmp/camera-manager.log
 STOPEOF
 chmod +x "$RESOURCES_DIR/Project/stop.sh"
 
-# 6. 更新 Swift 代码（指向 Resources/Project）
-echo "[6/6] 更新 Swift 代码..."
+# 7. 更新 Swift 代码（指向 Resources/Project）
+echo "编译 Swift 应用..."
 cat > "$MACOS_DIR/CameraManager.swift" << 'SWIFTEOF'
 import Cocoa
 
@@ -235,7 +236,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func showMainPage() {
-        if let url = URL(string: "http://localhost:9900") {
+        if let url = URL(string: "http://localhost:9901") {
             NSWorkspace.shared.open(url)
         }
     }
