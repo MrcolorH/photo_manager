@@ -17,7 +17,7 @@ export const photoApi = {
   getOrphanRaws: (repoId) => api.get('/photos/orphan-raws', { params: { repoId } }),
   
   // 删除照片
-  deletePhoto: (id, syncRaw = true, repoId) => api.delete(`/photos/${id}`, { params: { syncRaw, repoId } }),
+  deletePhoto: (id, syncRaw = true, repoId) => api.delete('/photos', { params: { id, syncRaw, repoId } }),
   
   // 批量删除RAW文件
   batchDeleteRaws: (fileIds, repoId) => api.post('/photos/batch-delete-raws', { fileIds, repoId }),

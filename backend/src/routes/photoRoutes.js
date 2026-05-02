@@ -129,10 +129,16 @@ router.get('/orphan-raws', async (req, res) => {
 });
 
 // 删除照片
-router.delete('/:id', async (req, res) => {
+router.delete('/', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { syncRaw = true, repoId } = req.query;
+    const { id, syncRaw = true, repoId } = req.query;
+    
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: '请提供照片ID'
+      });
+    }
     
     const fileService = await getFileService(repoId);
     const result = await fileService.deletePhoto(id, { syncRaw: syncRaw === 'true' });
