@@ -10,6 +10,7 @@ const importRoutes = require('./routes/importRoutes');
 const app = express();
 const PORT = process.env.PORT || 3001;
 const isStandalone = process.env.STANDALONE === 'true';
+const isElectronStandalone = process.env.ELECTRON_STANDALONE === 'true';
 
 // 中间件
 app.use(cors({
@@ -20,24 +21,32 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 存储仓库配置文件路径 - 使用项目根目录的 config 文件夹
-const PROJECT_ROOT = path.join(__dirname, '../..');
-const REPOS_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'repos.json');
+// 存储仓库配置文件路径
+const CONFIG_DIR = process.env.CONFIG_DIR || path.join(__dirname, '..', '..', 'config');
+const REPOS_CONFIG_PATH_LOCAL = path.join(CONFIG_DIR, 'repos.json');
 
 // 读取存储仓库列表
 function getRepos() {
   try {
-    const data = fs.readFileSync(REPOS_CONFIG_PATH, 'utf8');
+    const data = fs.readFileSync(REPOS_CONFIG_PATH_LOCAL, 'utf8');
     return JSON.parse(data);
   } catch {
     const defaultRepo = {
       id: 'default',
       name: '默认仓库',
-      path: process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片',
+      path: process.env.PHOTO_BASE_PATH || getDefaultPhotoPath(),
       isDefault: true
     };
     return [defaultRepo];
   }
+}
+
+function getDefaultPhotoPath() {
+  const platform = process.platform;
+  if (platform === 'win32') {
+    return path.join(require('os').homedir(), 'Pictures', 'CameraPhotos');
+  }
+  return '/Users/colorh/Pictures/相机照片';
 }
 
 // 动态静态文件服务 - 根据 repo 参数提供不同仓库的文件
@@ -70,7 +79,7 @@ app.get('/api/health', (req, res) => {
 
 // 独立版本：提供前端静态文件
 if (isStandalone) {
-  const frontendDist = path.join(__dirname, '../../frontend/dist');
+  const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
   app.use(express.static(frontendDist));
   
   // 所有非 API 请求返回前端 index.html

@@ -1,0 +1,64 @@
+appId: com.camera.photo-manager
+productName: CameraManager
+copyright: Copyright © 2026
+
+directories:
+  output: dist-electron
+  buildResources: electron/assets
+
+# ===== Windows =====
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: electron/assets/app-icon.ico
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 相机照片管理
+
+# ===== macOS =====
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: electron/assets/app-icon.png
+  category: public.app-category.photography
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+files:
+  - "electron/**/*"
+  - "backend/src/**/*"
+  - "backend/node_modules/**/*"
+  - "backend/package.json"
+  - "backend/data/**/*"
+  - "frontend/dist/**/*"
+  - "!**/*.map"
+  - "!**/node_modules/.cache/**"
+  - "!**/node_modules/*/test/**"
+  - "!**/node_modules/*/tests/**"
+  - "!**/node_modules/*/.github/**"
+  - "!**/node_modules/*/docs/**"
+
+extraResources:
+  - from: "resources/ffmpeg.exe"
+    to: "ffmpeg.exe"
+    filter:
+      - "**/*"
+
+asar: false

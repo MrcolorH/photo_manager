@@ -5,8 +5,8 @@ const fs = require('fs').promises;
 const path = require('path');
 const execPromise = util.promisify(exec);
 
-// exiftool vendored 版本的路径
-const EXIFTOOL_PATH = path.join(__dirname, '../../node_modules/exiftool-vendored.pl/bin/exiftool');
+// exiftool 路径 - 支持环境变量覆盖，兼容 Electron 打包
+const EXIFTOOL_PATH = process.env.EXIFTOOL_PATH || path.join(__dirname, '../../node_modules/exiftool-vendored.pl/bin/exiftool');
 
 // 提取RAW文件中的嵌入预览图
 async function extractEmbeddedPreview(rawPath, width = 300) {

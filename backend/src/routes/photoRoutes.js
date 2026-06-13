@@ -4,9 +4,12 @@ const path = require('path');
 const fs = require('fs').promises;
 const FileService = require('../services/fileService');
 
-// 存储仓库配置文件路径 - 使用项目根目录的 config 文件夹
-const PROJECT_ROOT = path.join(__dirname, '../..');
-const REPOS_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'repos.json');
+// 存储仓库配置文件路径 - 与 app.js / importRoutes.js 保持一致
+const CONFIG_DIR = process.env.CONFIG_DIR || path.join(__dirname, '..', '..', '..', 'config');
+const REPOS_CONFIG_PATH = path.join(CONFIG_DIR, 'repos.json');
+
+// ffmpeg 路径 - 优先使用环境变量注入的路径
+const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
 
 // 读取存储仓库列表
 async function getRepos() {
@@ -17,11 +20,18 @@ async function getRepos() {
     const defaultRepo = {
       id: 'default',
       name: '默认仓库',
-      path: process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片',
+      path: process.env.PHOTO_BASE_PATH || getDefaultPhotoPath(),
       isDefault: true
     };
     return [defaultRepo];
   }
+}
+
+function getDefaultPhotoPath() {
+  if (process.platform === 'win32') {
+    return path.join(require('os').homedir(), 'Pictures', 'CameraPhotos');
+  }
+  return '/Users/colorh/Pictures/相机照片';
 }
 
 // 获取指定仓库的FileService实例
@@ -217,7 +227,7 @@ router.get('/thumbnail', async (req, res) => {
       const { spawn } = require('child_process');
       
       return new Promise((resolve) => {
-        const ffmpeg = spawn('ffmpeg', [
+        const ffmpeg = spawn(FFMPEG_PATH, [
           '-i', decodedPath,
           '-ss', '00:00:01',  // 从第1秒开始提取
           '-vframes', '1',     // 只提取1帧

@@ -7,9 +7,9 @@ const { exec, spawn } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 
-// 存储仓库配置文件路径 - 使用项目根目录的 config 文件夹
-const PROJECT_ROOT = path.join(__dirname, '../..');
-const REPOS_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'repos.json');
+// 存储仓库配置文件路径 - 与 app.js 保持一致
+const CONFIG_DIR = process.env.CONFIG_DIR || path.join(__dirname, '..', '..', '..', 'config');
+const REPOS_CONFIG_PATH = path.join(CONFIG_DIR, 'repos.json');
 
 // 确保数据目录存在
 async function ensureDataDir() {
@@ -32,12 +32,19 @@ async function getRepos() {
     const defaultRepo = {
       id: 'default',
       name: '默认仓库',
-      path: process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片',
+      path: process.env.PHOTO_BASE_PATH || getDefaultPhotoPath(),
       isDefault: true
     };
     await saveRepos([defaultRepo]);
     return [defaultRepo];
   }
+}
+
+function getDefaultPhotoPath() {
+  if (process.platform === 'win32') {
+    return path.join(require('os').homedir(), 'Pictures', 'CameraPhotos');
+  }
+  return '/Users/colorh/Pictures/相机照片';
 }
 
 // 保存存储仓库列表
@@ -145,7 +152,7 @@ router.get('/', async (req, res) => {
 // 获取默认导入路径
 router.get('/default-path', async (req, res) => {
   try {
-    const defaultPath = process.env.DEFAULT_IMPORT_PATH || '/Volumes';
+    const defaultPath = process.env.DEFAULT_IMPORT_PATH || getDefaultImportPath();
     res.json({
       success: true,
       data: {
@@ -159,6 +166,13 @@ router.get('/default-path', async (req, res) => {
     });
   }
 });
+
+function getDefaultImportPath() {
+  if (process.platform === 'win32') {
+    return 'C:\\';
+  }
+  return '/Volumes';
+}
 
 // 获取所有存储仓库
 router.get('/repos', async (req, res) => {
@@ -287,125 +301,27 @@ router.put('/repos/:id/default', async (req, res) => {
 // 打开文件夹选择对话框
 router.get('/select-folder', async (req, res) => {
   try {
-    const platform = process.platform;
+    const { selectFolder } = require('../utils/winDialog');
+    const selectedPath = await selectFolder();
     
-    if (platform === 'darwin') {
-      // macOS - 使用 osascript 打开文件夹选择对话框
-      // 使用 spawn 而不是 exec，以便更好地控制进程
-      const result = await new Promise((resolve, reject) => {
-        const script = `
-          tell application "Finder"
-            activate
-            set selectedFolder to choose folder with prompt "请选择文件夹"
-            return POSIX path of selectedFolder
-          end tell
-        `;
-        
-        const child = spawn('osascript', ['-e', script], {
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
-        
-        let stdout = '';
-        let stderr = '';
-        
-        child.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
-        
-        child.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
-        
-        child.on('close', (code) => {
-          if (code !== 0) {
-            if (stderr.includes('User canceled') || stderr.includes('-128')) {
-              resolve(null); // 用户取消
-            } else {
-              reject(new Error(stderr || 'osascript failed'));
-            }
-          } else {
-            resolve(stdout.trim());
-          }
-        });
-        
-        child.on('error', (err) => {
-          reject(err);
-        });
-        
-        // 30秒超时
-        setTimeout(() => {
-          child.kill();
-          reject(new Error('timeout'));
-        }, 30000);
-      });
-      
-      if (!result) {
-        return res.json({
-          success: false,
-          error: '用户取消选择'
-        });
-      }
-      
-      return res.json({
-        success: true,
-        data: {
-          path: result
-        }
-      });
-    } else if (platform === 'win32') {
-      // Windows - 使用 PowerShell
-      const command = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.ShowDialog() | Out-Null; $f.SelectedPath"`;
-      const { stdout } = await execPromise(command, { timeout: 60000 });
-      const selectedPath = stdout.trim();
-      
-      if (!selectedPath) {
-        return res.json({
-          success: false,
-          error: '用户取消选择'
-        });
-      }
-      
-      return res.json({
-        success: true,
-        data: {
-          path: selectedPath
-        }
-      });
-    } else {
-      // Linux - 使用 zenity
-      const command = `zenity --file-selection --directory`;
-      const { stdout } = await execPromise(command, { timeout: 60000 });
-      const selectedPath = stdout.trim();
-      
-      if (!selectedPath) {
-        return res.json({
-          success: false,
-          error: '用户取消选择'
-        });
-      }
-      
-      return res.json({
-        success: true,
-        data: {
-          path: selectedPath
-        }
-      });
-    }
-  } catch (error) {
-    // 用户取消选择或超时
-    if (error.message.includes('User canceled') || 
-        error.message.includes('取消') ||
-        error.message.includes('timeout') ||
-        error.message.includes('error -128')) {
+    if (!selectedPath) {
       return res.json({
         success: false,
         error: '用户取消选择'
       });
     }
     
+    return res.json({
+      success: true,
+      data: {
+        path: selectedPath
+      }
+    });
+  } catch (error) {
+    console.error('文件夹选择失败:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || '无法打开文件夹选择对话框'
     });
   }
 });
