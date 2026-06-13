@@ -38,8 +38,9 @@ async function extractEmbeddedPreview(rawPath, width = 300) {
           if (stdout[0] === 0xFF && stdout[1] === 0xD8) {
             console.log('✅ 确认为有效的JPEG数据');
             
-            // 调整大小后返回
+            // 调整大小后返回（rotate()自动根据EXIF方向旋转）
             const thumbnailBuffer = await sharp(stdout)
+              .rotate()
               .resize(width, null, { withoutEnlargement: true })
               .jpeg({ quality: 80 })
               .toBuffer();
@@ -75,6 +76,7 @@ async function extractEmbeddedPreview(rawPath, width = 300) {
 async function decodeWithSharp(rawPath, width = 300, quality = 80) {
   try {
     const thumbnailBuffer = await sharp(rawPath)
+      .rotate()
       .resize(width, null, { withoutEnlargement: true })
       .jpeg({ quality })
       .toBuffer();

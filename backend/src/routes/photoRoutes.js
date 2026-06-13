@@ -227,18 +227,26 @@ router.get('/thumbnail', async (req, res) => {
       const { spawn } = require('child_process');
       
       return new Promise((resolve) => {
-        const ffmpeg = spawn(FFMPEG_PATH, [
-          '-i', decodedPath,
-          '-ss', '00:00:01',  // 从第1秒开始提取
-          '-vframes', '1',     // 只提取1帧
-          '-vf', `scale=${width}:-1`,  // 缩放到指定宽度
-          '-f', 'image2pipe',  // 输出到管道
-          '-vcodec', 'mjpeg',  // 使用 JPEG 编码
-          '-q:v', '5',         // 质量参数（1-31，越小质量越高）
-          'pipe:1'             // 输出到 stdout
-        ], {
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
+        let ffmpeg;
+        try {
+          ffmpeg = spawn(FFMPEG_PATH, [
+            '-i', decodedPath,
+            '-ss', '00:00:01',  // 从第1秒开始提取
+            '-vframes', '1',     // 只提取1帧
+            '-vf', `scale=${width}:-1`,  // 缩放到指定宽度
+            '-f', 'image2pipe',  // 输出到管道
+            '-vcodec', 'mjpeg',  // 使用 JPEG 编码
+            '-q:v', '5',         // 质量参数（1-31，越小质量越高）
+            'pipe:1'             // 输出到 stdout
+          ], {
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
+        } catch (err) {
+          console.error('ffmpeg 启动失败:', err.message);
+          sendVideoPlaceholder(res, width);
+          resolve();
+          return;
+        }
         
         const chunks = [];
         let errorOutput = '';
@@ -261,36 +269,14 @@ router.get('/thumbnail', async (req, res) => {
             res.send(buffer);
           } else {
             console.error('ffmpeg 提取视频帧失败:', errorOutput.substring(0, 200));
-            // 返回一个错误占位图
-            const placeholderSvg = `<svg width="${width}" height="200" xmlns="http://www.w3.org/2000/svg">
-              <rect width="100%" height="100%" fill="#333"/>
-              <text x="50%" y="45%" font-family="Arial" font-size="48" fill="#fff" text-anchor="middle">🎬</text>
-              <text x="50%" y="65%" font-family="Arial" font-size="16" fill="#ccc" text-anchor="middle">视频文件</text>
-              <text x="50%" y="75%" font-family="Arial" font-size="12" fill="#999" text-anchor="middle">点击播放</text>
-            </svg>`;
-            
-            res.set({
-              'Content-Type': 'image/svg+xml',
-              'Cache-Control': 'public, max-age=86400'
-            });
-            res.send(placeholderSvg);
+            sendVideoPlaceholder(res, width);
           }
           resolve();
         });
         
         ffmpeg.on('error', (err) => {
           console.error('ffmpeg 执行错误:', err.message);
-          const placeholderSvg = `<svg width="${width}" height="200" xmlns="http://www.w3.org/2000/svg">
-            <rect width="100%" height="100%" fill="#333"/>
-            <text x="50%" y="45%" font-family="Arial" font-size="48" fill="#fff" text-anchor="middle">🎬</text>
-            <text x="50%" y="65%" font-family="Arial" font-size="16" fill="#ccc" text-anchor="middle">视频文件</text>
-          </svg>`;
-          
-          res.set({
-            'Content-Type': 'image/svg+xml',
-            'Cache-Control': 'public, max-age=86400'
-          });
-          res.send(placeholderSvg);
+          sendVideoPlaceholder(res, width);
           resolve();
         });
       });
@@ -324,6 +310,7 @@ router.get('/thumbnail', async (req, res) => {
     const sharp = require('sharp');
     try {
       const thumbnailBuffer = await sharp(decodedPath)
+        .rotate()
         .resize(parseInt(width), null, { withoutEnlargement: true })
         .jpeg({ quality: parseInt(quality) })
         .toBuffer();
@@ -584,5 +571,20 @@ router.post('/batch-export', async (req, res) => {
     });
   }
 });
+
+// 发送视频占位图（ffmpeg 不可用时）
+function sendVideoPlaceholder(res, width) {
+  const placeholderSvg = `<svg width="${width}" height="200" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100%" height="100%" fill="#333"/>
+    <text x="50%" y="45%" font-family="Arial" font-size="48" fill="#fff" text-anchor="middle">🎬</text>
+    <text x="50%" y="65%" font-family="Arial" font-size="16" fill="#ccc" text-anchor="middle">视频文件</text>
+    <text x="50%" y="75%" font-family="Arial" font-size="12" fill="#999" text-anchor="middle">点击播放</text>
+  </svg>`;
+  res.set({
+    'Content-Type': 'image/svg+xml',
+    'Cache-Control': 'public, max-age=86400'
+  });
+  res.send(placeholderSvg);
+}
 
 module.exports = router;

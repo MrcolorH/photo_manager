@@ -30,8 +30,8 @@ dist-all/
 *.blockmap
 
 # Large binary resources (download separately)
-resources/ffmpeg.exe
 resources/*.exe
+!resources/ffmpeg.exe
 
 # IDE directories
 .lingma/

@@ -282,7 +282,7 @@ const PhotoGallery = () => {
 
   const handlePreview = async (photo) => {
     if (category === 'video') {
-      window.open(photo.url, '_blank');
+      handleOpenLocation(photo, 'file');
     } else if (category === 'raw') {
       handleOpenLocation(photo, 'file');
     } else {

@@ -16,6 +16,7 @@ let tray = null;
 let backendProcess = null;
 let healthCheckTimer = null;
 let appState = 'starting'; // 'starting' | 'running' | 'stopped' | 'error'
+let stopping = false; // 防止 stopBackend 并发调用
 
 // ============ 路径计算 ============
 function getResourcesPath() {
@@ -183,28 +184,47 @@ function startBackend() {
 
 function stopBackend() {
   return new Promise((resolve) => {
+    if (stopping) {
+      writeLog('stopBackend 已在执行中，跳过重复调用');
+      resolve();
+      return;
+    }
+    stopping = true;
+
     if (healthCheckTimer) {
       clearInterval(healthCheckTimer);
       healthCheckTimer = null;
     }
 
-    if (backendProcess && !backendProcess.killed) {
+    // 检查进程是否已自行退出（exitCode !== null 表示进程已结束）
+    // 旧代码用 !backendProcess.killed 无法检测进程自行退出的情况
+    if (backendProcess && backendProcess.exitCode === null) {
       writeLog('正在停止后端服务...');
-      backendProcess.on('exit', () => {
-        writeLog('后端服务已停止');
-        backendProcess = null;
-        resolve();
-      });
-      backendProcess.kill('SIGTERM');
 
-      // 强制终止超时
-      setTimeout(() => {
+      // 8秒超时，防止进程卡住导致 Promise 永不 resolve
+      const timeout = setTimeout(() => {
         if (backendProcess && !backendProcess.killed) {
+          writeLog('停止超时，强制终止后端进程');
           backendProcess.kill('SIGKILL');
         }
-      }, 5000);
+      }, 8000);
+
+      backendProcess.once('exit', () => {
+        clearTimeout(timeout);
+        writeLog('后端服务已停止');
+        backendProcess = null;
+        stopping = false;
+        resolve();
+      });
+
+      backendProcess.kill('SIGTERM');
     } else {
+      // 进程已退出或不存在，直接清理
+      if (backendProcess) {
+        writeLog('后端进程已退出 (exitCode: ' + backendProcess.exitCode + ')，无需重复停止');
+      }
       backendProcess = null;
+      stopping = false;
       resolve();
     }
   });
@@ -412,11 +432,9 @@ app.on('ready', () => {
   startBackend();
 });
 
-app.on('before-quit', async (e) => {
-  e.preventDefault();
+app.on('will-quit', async () => {
   writeLog('=== 应用关闭 ===');
   await stopBackend();
-  app.exit(0);
 });
 
 // 单实例锁 - 防止多开
