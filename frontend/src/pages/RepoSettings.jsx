@@ -8,7 +8,7 @@ import {
   Modal,
   Form,
   Input,
-  Radio,
+  Checkbox,
   message,
   Popconfirm,
   Alert,
@@ -309,7 +309,7 @@ const RepoSettings = () => {
             name="isDefault"
             valuePropName="checked"
           >
-            <Radio>设为默认仓库</Radio>
+            <Checkbox>设为默认仓库</Checkbox>
           </Form.Item>
         </Form>
       </Modal>

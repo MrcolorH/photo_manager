@@ -36,6 +36,7 @@ import {
   FolderAddOutlined
 } from '@ant-design/icons';
 import { importApi } from '../api';
+import { useRepo } from '../contexts/RepoContext';
 
 const { Option } = Select;
 
@@ -61,11 +62,19 @@ const ImportPage = () => {
   // 存储仓库相关
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
+  const { setCurrentRepoId } = useRepo();
   const [repoModalVisible, setRepoModalVisible] = useState(false);
   const [manageModalVisible, setManageModalVisible] = useState(false);
   const [form] = Form.useForm();
   const [repoPath, setRepoPath] = useState('');
   const [repoPathSelecting, setRepoPathSelecting] = useState(false);
+
+  // 当仓库切换时同步到全局上下文
+  useEffect(() => {
+    if (selectedRepo) {
+      setCurrentRepoId(selectedRepo);
+    }
+  }, [selectedRepo]);
   
   // 存储卡路径选择
   const [sourcePathSelecting, setSourcePathSelecting] = useState(false);

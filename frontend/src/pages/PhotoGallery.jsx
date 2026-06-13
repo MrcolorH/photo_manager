@@ -37,6 +37,7 @@ import {
 import { PhotoSlider } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { photoApi, importApi } from '../api';
+import { useRepo } from '../contexts/RepoContext';
 
 const { Option } = Select;
 
@@ -55,6 +56,14 @@ const PhotoGallery = () => {
   // 仓库相关
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
+  const { setCurrentRepoId } = useRepo();
+
+  // 当仓库切换时同步到全局上下文
+  useEffect(() => {
+    if (selectedRepo) {
+      setCurrentRepoId(selectedRepo);
+    }
+  }, [selectedRepo]);
   
   // 多选相关
   const [selectedPhotos, setSelectedPhotos] = useState([]);

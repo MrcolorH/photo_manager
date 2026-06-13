@@ -9,12 +9,14 @@ import {
 } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { photoApi } from '../api';
+import { useRepo } from '../contexts/RepoContext';
 
 const { Header, Sider, Content } = AntLayout;
 
 const Layout = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { currentRepoId } = useRepo();
   const [storageInfo, setStorageInfo] = useState({
     jpg: { count: 0, sizeFormatted: '0 B' },
     raw: { count: 0, sizeFormatted: '0 B' },
@@ -23,11 +25,11 @@ const Layout = () => {
 
   useEffect(() => {
     fetchStorageInfo();
-  }, []);
+  }, [currentRepoId]);
 
   const fetchStorageInfo = async () => {
     try {
-      const res = await photoApi.getStorageInfo();
+      const res = await photoApi.getStorageInfo(currentRepoId);
       if (res.data.success) {
         setStorageInfo(res.data.data);
       }

@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
+import { RepoProvider } from './contexts/RepoContext';
 import Layout from './components/Layout';
 import PhotoGallery from './pages/PhotoGallery';
 import ImportPage from './pages/ImportPage';
@@ -22,7 +23,7 @@ function App() {
     >
       <Router>
         <Routes>
-          <Route path="/" element={<Layout />}>
+          <Route path="/" element={<RepoProvider><Layout /></RepoProvider>}>
             <Route index element={<Navigate to="/gallery" replace />} />
             <Route path="gallery" element={<PhotoGallery />} />
             <Route path="import" element={<ImportPage />} />

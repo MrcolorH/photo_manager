@@ -29,6 +29,7 @@ import {
   DatabaseOutlined
 } from '@ant-design/icons';
 import { photoApi, importApi } from '../api';
+import { useRepo } from '../contexts/RepoContext';
 
 const { Option } = Select;
 
@@ -42,6 +43,14 @@ const SyncDeletePage = () => {
   // 仓库相关
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
+  const { setCurrentRepoId } = useRepo();
+
+  // 当仓库切换时同步到全局上下文
+  useEffect(() => {
+    if (selectedRepo) {
+      setCurrentRepoId(selectedRepo);
+    }
+  }, [selectedRepo]);
 
   useEffect(() => {
     fetchRepos();
