@@ -125,10 +125,10 @@ const tray32 = generateCameraPNG(32);
 fs.writeFileSync(path.join(ASSETS_DIR, 'tray-icon.png'), tray32);
 console.log('✅ tray-icon.png (32x32)');
 
-// 生成 256x256 应用图标 (electron-builder 可直接使用 PNG)
-const app256 = generateCameraPNG(256);
-fs.writeFileSync(path.join(ASSETS_DIR, 'app-icon.png'), app256);
-console.log('✅ app-icon.png (256x256)');
+// ⽣成 512x512 应⽤图标 (electron-builder macOS 要求至少 512x512)
+const app512 = generateCameraPNG(512);
+fs.writeFileSync(path.join(ASSETS_DIR, 'app-icon.png'), app512);
+console.log('✅ app-icon.png (512x512)');
 
 // 同时生成 ICO 格式 (多分辨率: 16, 32, 48, 64, 128, 256)
 const icoPath = path.join(ASSETS_DIR, 'app-icon.ico');

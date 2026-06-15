@@ -58,6 +58,8 @@ files:
 extraResources:
   - from: "resources/ffmpeg.exe"
     to: "ffmpeg.exe"
+  - from: "resources/ffmpeg"
+    to: "ffmpeg"
     filter:
       - "**/*"
 

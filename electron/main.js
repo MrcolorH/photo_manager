@@ -92,7 +92,7 @@ function startBackend() {
     STANDALONE: 'true',
     ELECTRON_STANDALONE: 'true',
     CONFIG_DIR: configDir,
-    FFMPEG_PATH: path.join(resourcesPath, 'ffmpeg.exe'),
+    FFMPEG_PATH: getFfmpegPath(resourcesPath),
     EXIFTOOL_PATH: getExiftoolPath(resourcesPath),
     PHOTO_BASE_PATH: path.join(app.getPath('pictures'), 'CameraPhotos'),
     DEFAULT_IMPORT_PATH: getWindowsDrives()[0] || 'C:\\'
@@ -294,6 +294,23 @@ function checkHealth() {
 }
 
 // ============ 工具函数 ============
+function getFfmpegPath(resourcesPath) {
+  if (process.platform === 'win32') {
+    // Windows: 使用打包的 ffmpeg.exe
+    const bundledExe = path.join(resourcesPath, 'ffmpeg.exe');
+    if (fs.existsSync(bundledExe)) {
+      return bundledExe;
+    }
+    return 'ffmpeg.exe';
+  }
+  // macOS / Linux: 优先使用打包的 ffmpeg，否则回退到系统 PATH
+  const bundledMac = path.join(resourcesPath, 'ffmpeg');
+  if (fs.existsSync(bundledMac)) {
+    return bundledMac;
+  }
+  return 'ffmpeg'; // 回退到系统 PATH (Homebrew 等)
+}
+
 function getExiftoolPath(resourcesPath) {
   // 优先使用 exiftool-vendored.exe (Windows)
   const vendoredExe = path.join(__dirname, '..', 'backend', 'node_modules', 'exiftool-vendored.exe', 'bin', 'exiftool.exe');
