@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>拾光舱 · 摄影师专属影像管家 · TRAE 参赛作品</title>
+  <meta name="description" content="拾光舱 (ShíGuāng Capsule) — 一款面向摄影师的一站式影像素材整理桌面工具，解决相机存储卡导入、RAW/JPG 配对管理、硬盘仓库同步、孤儿 RAW 清理等痛点。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;500;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep: #0a0908;
+      --bg: #14110f;
+      --bg-elev: #1c1815;
+      --bg-card: #211c18;
+      --line: #2c2620;
+      --line-soft: #1f1a16;
+      --ink: #ece4d3;
+      --ink-bright: #f7f1e2;
+      --ink-muted: #8a8278;
+      --ink-dim: #5a544a;
+      --amber: #d4a574;
+      --amber-bright: #f4c576;
+      --amber-deep: #8b5a2b;
+      --amber-glow: rgba(244, 197, 118, 0.18);
+      --teal: #5d8d8a;
+      --teal-soft: rgba(93, 141, 138, 0.22);
+      --serif: 'Cormorant Garamond', 'Noto Serif SC', serif;
+      --sans: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --maxw: 1280px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      font-weight: 400;
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--ink);
+      background: var(--bg-deep);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+    ::selection { background: var(--amber); color: var(--bg-deep); }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.05;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120vw;
+      height: 80vh;
+      pointer-events: none;
+      z-index: 0;
+      background: radial-gradient(ellipse at center, rgba(212, 165, 116, 0.08) 0%, transparent 55%);
+      filter: blur(40px);
+    }
+    h1, h2, h3, h4 { margin: 0; font-family: var(--serif); font-weight: 500; letter-spacing: -0.01em; color: var(--ink-bright); }
+    h1 { font-size: clamp(3rem, 8vw, 7rem); line-height: 0.95; font-weight: 400; }
+    h2 { font-size: clamp(2rem, 4.5vw, 3.75rem); line-height: 1.05; }
+    h3 { font-size: clamp(1.5rem, 2.4vw, 2rem); line-height: 1.2; }
+    h4 { font-size: 1.25rem; line-height: 1.3; }
+    p { margin: 0 0 1em; color: var(--ink); }
+    small { color: var(--ink-muted); }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--amber);
+    }
+    .eyebrow::before {
+      content: '';
+      width: 28px;
+      height: 1px;
+      background: var(--amber);
+    }
+    .lead {
+      font-family: var(--serif);
+      font-size: clamp(1.25rem, 2vw, 1.65rem);
+      line-height: 1.45;
+      color: var(--ink-bright);
+      font-weight: 400;
+      font-style: italic;
+    }
+    .container { max-width: var(--maxw); margin: 0 auto; padding: 0 32px; position: relative; z-index: 2; }
+    section { padding: 120px 0; position: relative; z-index: 2; }
+    section + section { border-top: 1px solid var(--line-soft); }
+
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      backdrop-filter: blur(14px) saturate(120%);
+      background: rgba(10, 9, 8, 0.55);
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .topbar-inner {
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 12px;
+      font-family: var(--serif);
+      font-size: 1.4rem;
+      color: var(--ink-bright);
+      letter-spacing: 0.02em;
+    }
+    .brand-mark {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, var(--amber-bright) 0%, var(--amber) 35%, var(--amber-deep) 75%, transparent 100%);
+      box-shadow: 0 0 18px var(--amber-glow), inset -2px -3px 6px rgba(0,0,0,0.4);
+      position: relative;
+    }
+    .brand-mark::after {
+      content: '';
+      position: absolute; inset: 6px;
+      border-radius: 50%;
+      border: 1px solid rgba(10,9,8,0.5);
+    }
+    .nav { display: flex; gap: 32px; }
+    .nav a {
+      font-size: 0.86rem;
+      color: var(--ink-muted);
+      transition: color 0.3s var(--ease);
+    }
+    .nav a:hover { color: var(--ink-bright); }
+    .nav-tag {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.18em;
+      color: var(--amber);
+      padding: 4px 10px;
+      border: 1px solid var(--amber-deep);
+      border-radius: 999px;
+    }
+
+    .hero {
+      min-height: 100vh;
+      padding: 160px 0 120px;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+    .hero-left { position: relative; }
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px 6px 6px;
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      color: var(--ink);
+      margin-bottom: 36px;
+    }
+    .hero-tag .dot {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: var(--amber);
+      color: var(--bg-deep);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 700;
+    }
+    .hero h1 { margin-bottom: 28px; }
+    .hero h1 .accent { font-style: italic; color: var(--amber); font-weight: 300; }
+    .hero h1 .cn {
+      display: block;
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: 0.78em;
+      color: var(--ink-bright);
+      margin-top: 8px;
+      letter-spacing: 0.04em;
+    }
+    .hero-sub {
+      max-width: 540px;
+      font-size: 1.05rem;
+      line-height: 1.75;
+      color: var(--ink-muted);
+      margin-bottom: 48px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      border-radius: 999px;
+      transition: all 0.4s var(--ease);
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-primary {
+      background: var(--amber);
+      color: var(--bg-deep);
+    }
+    .btn-primary:hover {
+      background: var(--amber-bright);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px -10px var(--amber-glow);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    .btn-ghost:hover {
+      border-color: var(--amber);
+      color: var(--amber);
+    }
+    .btn .arrow { transition: transform 0.3s var(--ease); }
+    .btn:hover .arrow { transform: translateX(4px); }
+
+    .hero-right { position: relative; }
+    .app-mock {
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.02) inset;
+      transform: perspective(1400px) rotateY(-6deg) rotateX(2deg);
+      transition: transform 1.2s var(--ease);
+    }
+    .app-mock:hover { transform: perspective(1400px) rotateY(0deg) rotateX(0deg); }
+    .app-mock-bar {
+      display: flex; align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      gap: 8px;
+      background: var(--bg);
+    }
+    .traffic { display: flex; gap: 6px; }
+    .traffic span { width: 11px; height: 11px; border-radius: 50%; background: var(--ink-dim); }
+    .traffic span:nth-child(1) { background: #e06c5b; }
+    .traffic span:nth-child(2) { background: #e0b85b; }
+    .traffic span:nth-child(3) { background: #6cb46c; }
+    .app-mock-title {
+      flex: 1; text-align: center;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--ink-muted);
+    }
+    .app-mock-body { display: grid; grid-template-columns: 200px 1fr; min-height: 380px; }
+    .app-mock-side {
+      background: var(--bg);
+      border-right: 1px solid var(--line);
+      padding: 18px 12px;
+    }
+    .side-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: var(--ink-muted);
+      margin-bottom: 4px;
+    }
+    .side-item.active { background: var(--bg-card); color: var(--amber); }
+    .side-icon { width: 16px; height: 16px; border: 1px solid currentColor; border-radius: 3px; opacity: 0.7; }
+    .app-mock-main { padding: 18px; }
+    .mock-toolbar {
+      display: flex; gap: 8px; margin-bottom: 16px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--line);
+    }
+    .mock-toolbar span { height: 8px; width: 60px; background: var(--line); border-radius: 4px; }
+    .mock-toolbar span:nth-child(2) { width: 40px; }
+    .mock-toolbar span:nth-child(3) { width: 80px; background: var(--amber-deep); }
+    .mock-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .mock-tile {
+      aspect-ratio: 1;
+      border-radius: 6px;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .mock-tile::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.5));
+    }
+    .mock-tile.tagged::before {
+      content: 'RAW';
+      position: absolute; top: 6px; left: 6px;
+      font-family: var(--mono); font-size: 0.55rem;
+      background: var(--amber); color: var(--bg-deep);
+      padding: 2px 6px; border-radius: 3px; z-index: 1;
+      font-weight: 700;
+    }
+    .float-caption {
+      position: absolute;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--amber);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .float-caption.tl { top: -20px; left: -10px; }
+    .float-caption.br { bottom: -20px; right: -10px; }
+    .float-caption::before { content: '↗ '; }
+
+    .strip {
+      padding: 40px 0 80px;
+      border-top: 1px solid var(--line-soft);
+      border-bottom: 1px solid var(--line-soft);
+      background: var(--bg);
+    }
+    .strip-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 32px; flex-wrap: wrap;
+      max-width: var(--maxw); margin: 0 auto; padding: 0 32px;
+    }
+    .strip-label {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.24em;
+      color: var(--ink-muted);
+      text-transform: uppercase;
+    }
+    .strip-items {
+      display: flex; gap: 48px; flex-wrap: wrap;
+      font-family: var(--serif);
+      font-size: 1.15rem;
+      color: var(--ink);
+    }
+    .strip-items span { display: flex; align-items: center; gap: 10px; }
+    .strip-items span::before { content: '◆'; color: var(--amber-deep); font-size: 0.7em; }
+
+    .section-head { max-width: 760px; margin-bottom: 80px; }
+    .section-head .eyebrow { margin-bottom: 24px; }
+    .section-head .lead { margin-top: 24px; }
+
+    .pain-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0;
+      border-top: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+    }
+    .pain-cell {
+      padding: 48px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      position: relative;
+      transition: background 0.5s var(--ease);
+    }
+    .pain-cell:hover { background: var(--bg-elev); }
+    .pain-num {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      color: var(--amber);
+      margin-bottom: 28px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .pain-num::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+    .pain-cell h3 { margin-bottom: 14px; }
+    .pain-cell p { color: var(--ink-muted); margin: 0; font-size: 0.98rem; }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 24px;
+    }
+    .feature {
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 36px 32px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.5s var(--ease);
+    }
+    .feature::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--amber-deep), transparent);
+      opacity: 0; transition: opacity 0.5s var(--ease);
+    }
+    .feature:hover { transform: translateY(-4px); border-color: var(--amber-deep); }
+    .feature:hover::before { opacity: 1; }
+    .feature.col-7 { grid-column: span 7; }
+    .feature.col-5 { grid-column: span 5; }
+    .feature.col-4 { grid-column: span 4; }
+    .feature.col-6 { grid-column: span 6; }
+
+    .feature-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--amber-deep), transparent);
+      border: 1px solid var(--amber-deep);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 24px;
+      color: var(--amber);
+    }
+    .feature-num {
+      position: absolute; top: 24px; right: 28px;
+      font-family: var(--serif);
+      font-size: 2.2rem;
+      color: var(--line);
+      font-weight: 300;
+      font-style: italic;
+    }
+    .feature h3 { margin-bottom: 12px; }
+    .feature p { color: var(--ink-muted); margin: 0; font-size: 0.95rem; }
+    .feature .meta {
+      margin-top: 20px;
+      display: flex; gap: 16px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 0.72rem;
+      color: var(--ink-muted);
+    }
+    .feature .meta span { display: flex; align-items: center; gap: 6px; }
+    .feature .meta span::before { content: '·'; color: var(--amber); }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0;
+      position: relative;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      top: 40px; left: 5%; right: 5%;
+      height: 1px;
+      background: linear-gradient(90deg, var(--line), var(--amber) 50%, var(--line));
+    }
+    .step {
+      text-align: center;
+      padding: 0 12px;
+      position: relative;
+    }
+    .step-circle {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      margin: 0 auto 24px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      transition: all 0.5s var(--ease);
+      font-family: var(--serif);
+      font-size: 1.6rem;
+      color: var(--ink-muted);
+    }
+    .step:hover .step-circle {
+      border-color: var(--amber);
+      color: var(--amber);
+      transform: scale(1.05);
+      box-shadow: 0 0 30px var(--amber-glow);
+    }
+    .step-label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.18em;
+      color: var(--amber);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .step-title {
+      font-family: var(--serif);
+      font-size: 1.1rem;
+      color: var(--ink-bright);
+      margin-bottom: 8px;
+    }
+    .step-desc {
+      font-size: 0.82rem;
+      color: var(--ink-muted);
+      line-height: 1.55;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .stat {
+      padding: 56px 32px;
+      border-right: 1px solid var(--line);
+    }
+    .stat:last-child { border-right: none; }
+    .stat-num {
+      font-family: var(--serif);
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      color: var(--amber);
+      line-height: 1;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+    }
+    .stat-num .unit {
+      font-size: 0.45em;
+      color: var(--ink-muted);
+      margin-left: 6px;
+      font-style: italic;
+    }
+    .stat-label {
+      margin-top: 16px;
+      font-size: 0.9rem;
+      color: var(--ink-muted);
+    }
+
+    .tech-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 80px;
+      align-items: center;
+    }
+    .tech-list { display: grid; gap: 0; }
+    .tech-row {
+      display: grid;
+      grid-template-columns: 80px 1fr auto;
+      align-items: center;
+      gap: 24px;
+      padding: 24px 0;
+      border-top: 1px solid var(--line);
+      transition: padding 0.4s var(--ease);
+    }
+    .tech-row:last-child { border-bottom: 1px solid var(--line); }
+    .tech-row:hover { padding-left: 12px; }
+    .tech-row:hover .tech-name { color: var(--amber); }
+    .tech-name {
+      font-family: var(--serif);
+      font-size: 1.4rem;
+      color: var(--ink-bright);
+      transition: color 0.3s var(--ease);
+    }
+    .tech-name small {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--ink-muted);
+      margin-top: 4px;
+      letter-spacing: 0.12em;
+    }
+    .tech-tag {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--amber);
+      padding: 4px 10px;
+      border: 1px solid var(--amber-deep);
+      border-radius: 4px;
+      letter-spacing: 0.1em;
+    }
+    .code-block {
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 28px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.8;
+      color: var(--ink);
+      overflow: hidden;
+    }
+    .code-block .c { color: var(--ink-dim); }
+    .code-block .k { color: var(--amber); }
+    .code-block .s { color: #8fb87c; }
+    .code-block .v { color: #b89cd8; }
+    .code-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-bottom: none;
+      border-radius: 12px 12px 0 0;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--ink-muted);
+    }
+    .code-head .dots { display: flex; gap: 6px; }
+    .code-head .dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-dim); }
+    .code-wrap .code-block { border-radius: 0 0 12px 12px; margin-top: -1px; }
+
+    .value-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+    .value-card {
+      padding: 48px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: radial-gradient(ellipse at top right, var(--amber-glow), transparent 50%), var(--bg-elev);
+      position: relative;
+      overflow: hidden;
+    }
+    .value-card::after {
+      content: '';
+      position: absolute; bottom: -50%; right: -10%;
+      width: 60%; height: 100%;
+      background: radial-gradient(circle, var(--amber-glow) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .value-card h3 { margin-bottom: 16px; }
+    .value-card p { color: var(--ink-muted); }
+    .value-list { margin: 24px 0 0; padding: 0; list-style: none; }
+    .value-list li {
+      padding: 14px 0;
+      border-top: 1px dashed var(--line);
+      display: flex; gap: 14px; align-items: flex-start;
+      font-size: 0.95rem;
+      color: var(--ink);
+    }
+    .value-list li::before { content: '▸'; color: var(--amber); margin-top: 1px; }
+
+    .quote {
+      text-align: center;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 80px 32px;
+    }
+    .quote-mark {
+      font-family: var(--serif);
+      font-size: 8rem;
+      line-height: 0.5;
+      color: var(--amber-deep);
+      margin-bottom: 32px;
+      font-style: italic;
+    }
+    .quote-text {
+      font-family: var(--serif);
+      font-size: clamp(1.5rem, 3vw, 2.2rem);
+      line-height: 1.4;
+      color: var(--ink-bright);
+      font-style: italic;
+      font-weight: 300;
+    }
+    .quote-attr {
+      margin-top: 32px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--ink-muted);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .cta {
+      text-align: center;
+      padding: 140px 32px;
+      position: relative;
+      border-top: 1px solid var(--line-soft);
+    }
+    .cta h2 { margin-bottom: 24px; }
+    .cta h2 .accent { color: var(--amber); font-style: italic; font-weight: 300; }
+    .cta p { max-width: 580px; margin: 0 auto 40px; color: var(--ink-muted); }
+    .cta-meta {
+      display: flex; justify-content: center; gap: 32px; flex-wrap: wrap;
+      margin-top: 56px; padding-top: 32px;
+      border-top: 1px solid var(--line-soft);
+      font-family: var(--mono); font-size: 0.72rem;
+      color: var(--ink-muted);
+      letter-spacing: 0.16em;
+    }
+    .cta-meta span { display: flex; align-items: center; gap: 8px; }
+    .cta-meta span::before { content: '◆'; color: var(--amber-deep); font-size: 0.7em; }
+
+    footer {
+      padding: 48px 32px;
+      border-top: 1px solid var(--line-soft);
+      display: flex; justify-content: space-between; align-items: center;
+      max-width: var(--maxw); margin: 0 auto;
+      flex-wrap: wrap; gap: 16px;
+      font-family: var(--mono); font-size: 0.72rem; color: var(--ink-muted);
+      letter-spacing: 0.12em;
+    }
+    footer .heart { color: var(--amber); }
+
+    .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.9s var(--ease), transform 0.9s var(--ease); }
+    .reveal.in { opacity: 1; transform: none; }
+    .reveal.delay-1 { transition-delay: 0.08s; }
+    .reveal.delay-2 { transition-delay: 0.16s; }
+    .reveal.delay-3 { transition-delay: 0.24s; }
+    .reveal.delay-4 { transition-delay: 0.32s; }
+    .reveal.delay-5 { transition-delay: 0.4s; }
+    .reveal.delay-6 { transition-delay: 0.48s; }
+
+    @media (max-width: 960px) {
+      section { padding: 80px 0; }
+      .hero { padding: 120px 0 80px; }
+      .hero-grid { grid-template-columns: 1fr; gap: 56px; }
+      .app-mock { transform: none; }
+      .pain-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: 1fr; }
+      .feature.col-7, .feature.col-5, .feature.col-4, .feature.col-6 { grid-column: span 1; }
+      .timeline { grid-template-columns: repeat(2, 1fr); gap: 40px; }
+      .timeline::before { display: none; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(2) { border-right: none; }
+      .stat:nth-child(1), .stat:nth-child(2) { border-bottom: 1px solid var(--line); }
+      .tech-wrap { grid-template-columns: 1fr; gap: 48px; }
+      .value-grid { grid-template-columns: 1fr; }
+      .nav { display: none; }
+      .strip-inner { flex-direction: column; align-items: flex-start; }
+    }
+    @media (max-width: 540px) {
+      .container, .strip-inner { padding: 0 20px; }
+      .timeline { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr; }
+      .stat { border-right: none !important; border-bottom: 1px solid var(--line); }
+      .stat:last-child { border-bottom: none; }
+      .pain-cell { padding: 32px 24px; }
+      .feature { padding: 28px 24px; }
+      .value-card { padding: 32px 24px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .reveal { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true"></span>
+        拾光舱 <span style="opacity:.5; font-size:.9em;">/ ShíGuāng</span>
+      </a>
+      <nav class="nav">
+        <a href="#pain">痛点</a>
+        <a href="#solution">方案</a>
+        <a href="#workflow">流程</a>
+        <a href="#tech">技术</a>
+        <a href="#value">价值</a>
+        <a class="nav-tag" href="#cta">TRAE · 学习工作赛道</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container">
+        <div class="hero-grid">
+          <div class="hero-left">
+            <div class="hero-tag reveal">
+              <span class="dot">S</span>
+              <span>ShíGuāng Capsule · v1.0</span>
+            </div>
+            <h1 class="reveal delay-1">
+              <span class="accent">Capture the light.</span>
+              <span class="cn">把时间，整齐地收回舱里。</span>
+            </h1>
+            <p class="hero-sub reveal delay-2">
+              拾光舱是一款专为摄影师打造的一站式影像整理桌面工具。一键把相机存储卡里的 RAW 与 JPG 收入硬盘仓库，自动配对、智能去重、清理孤儿文件——让创作之后的「收尾工作」从一整晚缩短为一杯咖啡的时间。
+            </p>
+            <div class="hero-actions reveal delay-3">
+              <a class="btn btn-primary" href="#solution">
+                了解更多 <span class="arrow">→</span>
+              </a>
+              <a class="btn btn-ghost" href="#tech">
+                技术架构
+              </a>
+            </div>
+          </div>
+
+          <div class="hero-right reveal delay-4">
+            <div class="app-mock">
+              <div class="app-mock-bar">
+                <div class="traffic"><span></span><span></span><span></span></div>
+                <div class="app-mock-title">拾光舱 · 影像库 / 2026 旅行季</div>
+                <div style="width:50px"></div>
+              </div>
+              <div class="app-mock-body">
+                <aside class="app-mock-side">
+                  <div class="side-item active"><span class="side-icon"></span>图库</div>
+                  <div class="side-item"><span class="side-icon"></span>导入</div>
+                  <div class="side-item"><span class="side-icon"></span>同步删除</div>
+                  <div class="side-item"><span class="side-icon"></span>仓库设置</div>
+                </aside>
+                <div class="app-mock-main">
+                  <div class="mock-toolbar">
+                    <span></span><span></span><span></span>
+                  </div>
+                  <div class="mock-grid">
+                    <div class="mock-tile tagged" style="background-image:url('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20golden%20hour%20portrait%20photograph%2C%20warm%20tones%2C%20film%20look%2C%20soft%20bokeh%2C%20editorial%20photography&image_size=portrait_4_3')"></div>
+                    <div class="mock-tile" style="background-image:url('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=analog%20street%20photography%2C%20Tokyo%20alley%20at%20night%2C%20neon%20reflections%2C%20cinematic%20grain&image_size=portrait_4_3')"></div>
+                    <div class="mock-tile tagged" style="background-image:url('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=misty%20mountain%20landscape%20at%20sunrise%2C%20pastel%20sky%2C%20layered%20hills%2C%20peaceful%20atmosphere&image_size=portrait_4_3')"></div>
+                    <div class="mock-tile" style="background-image:url('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=close-up%20macro%20photograph%20of%20a%20dew-covered%20flower%20at%20dawn%2C%20soft%20bokeh&image_size=portrait_4_3')"></div>
+                    <div class="mock-tile tagged" style="background-image:url('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=travel%20photograph%20of%20an%20old%20European%20cafe%20terrace%2C%20golden%20light%2C%20vintage%20feel&image_size=portrait_4_3')"></div>
+                    <div class="mock-tile" style="background-image:url('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=minimalist%20architecture%20photograph%2C%20concrete%20shadows%2C%20strong%20geometric%20lines%2C%20overcast%20sky&image_size=portrait_4_3')"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="float-caption tl">RAW + JPG pairing</div>
+            <div class="float-caption br">Multi-repo aware</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="strip">
+      <div class="strip-inner">
+        <div class="strip-label">为谁而做 · Built for</div>
+        <div class="strip-items">
+          <span>独立摄影师</span>
+          <span>旅拍达人</span>
+          <span>婚礼跟拍</span>
+          <span>活动记录</span>
+          <span>自媒体创作者</span>
+          <span>摄影爱好者</span>
+        </div>
+      </div>
+    </div>
+
+    <section id="pain">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow reveal">01 / The Problem</div>
+          <h2 class="reveal delay-1">按下快门之后，<br/>才是真正「重」的环节。</h2>
+          <p class="lead reveal delay-2">
+            摄影的乐趣在按下快门的那一刻，但随之而来的拷贝、整理、备份、删卡，往往要花掉一整晚。市场上主流后期软件都假设你「已经拷好了」——但拷文件这一步，正是最耗时的。
+          </p>
+        </div>
+
+        <div class="pain-grid">
+          <div class="pain-cell reveal">
+            <div class="pain-num">P · 01</div>
+            <h3>系统复制没有进度反馈</h3>
+            <p>Finder / 资源管理器只能干等，几百 GB 的 RAW 拷到一半不敢拔卡、又不敢中断，生怕丢数据。等待本身就是消耗。</p>
+          </div>
+          <div class="pain-cell reveal delay-1">
+            <div class="pain-num">P · 02</div>
+            <h3>RAW 与 JPG 配对混乱</h3>
+            <p>一组照片里一张 RAW + 一张 JPG 是常态。整理时删一张忘一张，久了仓库里堆满"孤儿 RAW"或"孤儿 JPG"，硬盘越用越满。</p>
+          </div>
+          <div class="pain-cell reveal delay-2">
+            <div class="pain-num">P · 03</div>
+            <h3>多硬盘 / NAS 没有统一视图</h3>
+            <p>主力盘、备份盘、NAS、外接 SSD 各自为政。想找一张去年拍的照片，得插上每块硬盘逐个翻。</p>
+          </div>
+          <div class="pain-cell reveal delay-3">
+            <div class="pain-num">P · 04</div>
+            <h3>现有工具又贵又学不动</h3>
+            <p>Lightroom、Capture One 一年动辄上千，主战场是调色，对「导入 + 整理」几乎没帮忙，新手得看一周教程才能上手。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="solution">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow reveal">02 / The Solution</div>
+          <h2 class="reveal delay-1">拾光舱，把「拷贝 + 整理」<br/>变成一次优雅的点击。</h2>
+          <p class="lead reveal delay-2">
+            基于 Electron 打造的跨平台桌面应用（macOS / Windows），把摄影师最讨厌的「六步收尾流程」压缩为一键。开源、免费、专为影像设计。
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <div class="feature col-7 reveal">
+            <span class="feature-num">01</span>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 12h18M12 3v18"/></svg></div>
+            <h3>存储卡一键入库</h3>
+            <p>识别 SD / CF / XQD 卡自动挂载路径；带进度条、剩余时间预估、断点续传，再也不用提心吊胆地「干等 Finder」。</p>
+            <div class="meta"><span>CRC 校验</span><span>断点续传</span><span>实时进度</span></div>
+          </div>
+
+          <div class="feature col-5 reveal delay-1">
+            <span class="feature-num">02</span>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div>
+            <h3>RAW + JPG 智能配对</h3>
+            <p>基于 EXIF 时间戳和文件名的双因子配对，让每一组「双胞胎」永远一起入仓、一起出仓。</p>
+            <div class="meta"><span>EXIF 解析</span><span>孤儿检测</span></div>
+          </div>
+
+          <div class="feature col-4 reveal">
+            <span class="feature-num">03</span>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6"/></svg></div>
+            <h3>多仓库统一管理</h3>
+            <p>本地硬盘、外接 SSD、NAS 一键挂载为仓库，跨盘检索像在同一块盘里一样顺滑。</p>
+          </div>
+
+          <div class="feature col-4 reveal delay-1">
+            <span class="feature-num">04</span>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h18v18H3z"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg></div>
+            <h3>RAW 缩略图即时预览</h3>
+            <p>无需 Lightroom 即可浏览 RAW 大图，自研解码器支持主流厂商（Canon、Nikon、Sony、Fuji）。</p>
+          </div>
+
+          <div class="feature col-4 reveal delay-2">
+            <span class="feature-num">05</span>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
+            <h3>孤儿 RAW 一键清理</h3>
+            <p>专治「删 JPG 留 RAW」或「删 RAW 留 JPG」导致的空间浪费，扫一遍即可找出并清理。</p>
+          </div>
+
+          <div class="feature col-6 reveal">
+            <span class="feature-num">06</span>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/></svg></div>
+            <h3>跨平台原生体验</h3>
+            <p>基于 Electron 35 构建，在 macOS 与 Windows 上都拥有原生窗口、托盘、文件对话框体验，告别跨平台"塑料感"。</p>
+            <div class="meta"><span>macOS 12+</span><span>Windows 10+</span><span>Apple Silicon</span></div>
+          </div>
+
+          <div class="feature col-6 reveal delay-1">
+            <span class="feature-num">07</span>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></div>
+            <h3>开源、免费、可扩展</h3>
+            <p>完全开源的工作流引擎。后续可接入 AI 智能选片、云端备份、RAW 调色预设等增值能力，形成可持续的商业化路径。</p>
+            <div class="meta"><span>Plugin SDK</span><span>AI Ready</span><span>Community</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow reveal">03 / The Workflow</div>
+          <h2 class="reveal delay-1">六步收尾，<br/>一步到位。</h2>
+          <p class="lead reveal delay-2">
+            从插卡到整理完毕，原本要花一整晚的六步流程，在拾光舱里就是「选卡 → 确认 → 倒头睡觉」。
+          </p>
+        </div>
+
+        <div class="timeline reveal">
+          <div class="step">
+            <div class="step-circle">1</div>
+            <div class="step-label">Insert</div>
+            <div class="step-title">插入存储卡</div>
+            <p class="step-desc">拾光舱自动识别 SD / CF / XQD 卡。</p>
+          </div>
+          <div class="step">
+            <div class="step-circle">2</div>
+            <div class="step-label">Select</div>
+            <div class="step-title">选择目标仓库</div>
+            <p class="step-desc">本地盘、外接 SSD、NAS 任选其一。</p>
+          </div>
+          <div class="step">
+            <div class="step-circle">3</div>
+            <div class="step-label">Import</div>
+            <div class="step-title">一键带进度导入</div>
+            <p class="step-desc">CRC 校验 + 断点续传 + 实时进度。</p>
+          </div>
+          <div class="step">
+            <div class="step-circle">4</div>
+            <div class="step-label">Pair</div>
+            <div class="step-title">RAW/JPG 自动配对</div>
+            <p class="step-desc">EXIF 时间戳 + 文件名双因子配对。</p>
+          </div>
+          <div class="step">
+            <div class="step-circle">5</div>
+            <div class="step-label">Clean</div>
+            <div class="step-title">孤儿文件清理</div>
+            <p class="step-desc">一键找出"缺另一半"的文件。</p>
+          </div>
+          <div class="step">
+            <div class="step-circle">6</div>
+            <div class="step-label">Browse</div>
+            <div class="step-title">即时大图预览</div>
+            <p class="step-desc">无需 Lightroom 即可看 RAW。</p>
+          </div>
+        </div>
+
+        <div style="margin-top: 96px;" class="stats reveal">
+          <div class="stat">
+            <div class="stat-num">60<span class="unit">%−80%</span></div>
+            <div class="stat-label">单次素材归整节省的时间</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num">RAW<span class="unit">+ JPG</span></div>
+            <div class="stat-label">智能配对，覆盖主流相机厂商</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num">2<span class="unit">平台</span></div>
+            <div class="stat-label">macOS &amp; Windows 原生体验</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num">100<span class="unit">%开源</span></div>
+            <div class="stat-label">完全开源，可自由扩展</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tech">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow reveal">04 / Under the Hood</div>
+          <h2 class="reveal delay-1">为摄影师量身打造的<br/>现代技术栈。</h2>
+          <p class="lead reveal delay-2">
+            Electron 35 + React 19 + Node 20 + Vite 6，全链路 TypeScript，把工程美感留给代码，把稳定留给创作者。
+          </p>
+        </div>
+
+        <div class="tech-wrap">
+          <div class="tech-list reveal">
+            <div class="tech-row">
+              <div class="tech-name">Electron<small>跨端容器</small></div>
+              <div class="tech-tag">v35.7.5</div>
+            </div>
+            <div class="tech-row">
+              <div class="tech-name">React<small>界面框架</small></div>
+              <div class="tech-tag">v19</div>
+            </div>
+            <div class="tech-row">
+              <div class="tech-name">Vite<small>构建工具</small></div>
+              <div class="tech-tag">v6</div>
+            </div>
+            <div class="tech-row">
+              <div class="tech-name">Ant Design<small>组件库</small></div>
+              <div class="tech-tag">UI</div>
+            </div>
+            <div class="tech-row">
+              <div class="tech-name">Node + Express<small>本地后端</small></div>
+              <div class="tech-tag">9901</div>
+            </div>
+            <div class="tech-row">
+              <div class="tech-name">FFmpeg<small>RAW 缩略图</small></div>
+              <div class="tech-tag">Native</div>
+            </div>
+            <div class="tech-row">
+              <div class="tech-name">electron-builder<small>一键打包</small></div>
+              <div class="tech-tag">DMG / EXE</div>
+            </div>
+          </div>
+
+          <div class="code-wrap reveal delay-1">
+            <div class="code-head">
+              <div class="dots"><span></span><span></span><span></span></div>
+              <div>importRoutes.js</div>
+              <div style="width:48px"></div>
+            </div>
+            <pre class="code-block"><span class="c">// 一键导入存储卡影像</span>
+<span class="k">router</span>.<span class="p">post</span>(<span class="s">'/import'</span>, <span class="k">async</span> (req, res) => {
+  <span class="k">const</span> { sourcePath, repoId } = req.body
+
+  <span class="k">const</span> files = <span class="k">await</span> scanDir(sourcePath)
+  <span class="k">const</span> pairs = pairRawAndJpg(files)        <span class="c">// EXIF 配对</span>
+  <span class="k">const</span> orphans = findOrphans(pairs)       <span class="c">// 孤儿检测</span>
+
+  <span class="k">await</span> transfer(files, repoId, {
+    onProgress: (p) =&gt; <span class="v">io</span>.emit(<span class="s">'progress'</span>, p),
+    checksum: <span class="k">true</span>,                       <span class="c">// CRC 校验</span>
+    resume: <span class="k">true</span>                          <span class="c">// 断点续传</span>
+  })
+
+  res.json({ success: <span class="k">true</span>, pairs, orphans })
+})</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding: 60px 0;">
+      <div class="container">
+        <div class="quote reveal">
+          <div class="quote-mark">"</div>
+          <p class="quote-text">
+            摄影的乐趣在按下快门的那一刻。拾光舱希望把之后的拷贝、整理、备份、清理——那些一点都不浪漫的事情，温柔地接过来。
+          </p>
+          <div class="quote-attr">— 拾光舱 · 设计哲学</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="value">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow reveal">05 / The Impact</div>
+          <h2 class="reveal delay-1">它对摄影师、<br/>对行业意味着什么？</h2>
+        </div>
+
+        <div class="value-grid">
+          <div class="value-card reveal">
+            <h3>效率提升</h3>
+            <p>把原本需要「插卡 → 复制 → 检查 → 整理 → 备份 → 删卡」六步手动操作压缩为一键完成。</p>
+            <ul class="value-list">
+              <li>单次素材归整从 1 个通宵缩短到 1–2 小时</li>
+              <li>释放出的时间直接转化为可承接的拍摄订单</li>
+              <li>用开源免费方案替代每年上千元的订阅费</li>
+              <li>跨平台一致体验，Mac 与 Windows 用户无缝迁移</li>
+            </ul>
+          </div>
+
+          <div class="value-card reveal delay-1">
+            <h3>商业价值</h3>
+            <p>作为开源基础设施，拾光舱具备清晰的可持续商业化路径。</p>
+            <ul class="value-list">
+              <li>云端备份增值服务（按容量订阅）</li>
+              <li>AI 智能选片（按次或订阅）</li>
+              <li>RAW 调色预设市场（创作者分成）</li>
+              <li>面向摄影工作室的私有部署 / 团队协作版</li>
+            </ul>
+          </div>
+
+          <div class="value-card reveal">
+            <h3>社会价值</h3>
+            <p>让影像管理不再是「专业人士的特权」。</p>
+            <ul class="value-list">
+              <li>降低摄影学习门槛，让爱好者专注于创作本身</li>
+              <li>开源生态鼓励高校、影像机构参与共建</li>
+              <li>保护用户数据主权：素材始终在本地，不上传</li>
+              <li>为残障 / 视障摄影教育提供可访问的工作流</li>
+            </ul>
+          </div>
+
+          <div class="value-card reveal delay-1">
+            <h3>未来路线</h3>
+            <p>拾光舱不只是一个工具，更是摄影师工作流的中枢。</p>
+            <ul class="value-list">
+              <li>v1.1 · AI 智能分类（人物 / 场景 / 情绪）</li>
+              <li>v1.2 · 端到端加密云端备份</li>
+              <li>v2.0 · 多人协作：工作室级别的影像库</li>
+              <li>v2.x · 移动端 App：出门在外也能整理</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="cta" class="cta">
+      <div class="eyebrow reveal" style="justify-content:center;">Submission · TRAE 创作大赛</div>
+      <h2 class="reveal delay-1" style="margin-top:24px;">
+        拾光舱 · 让每一束光，<br/>
+        <span class="accent">都被温柔地收纳。</span>
+      </h2>
+      <p class="reveal delay-2">
+        这是一款由真实摄影师的真实痛点驱动、用 TRAE 完整搭建的开源桌面应用。
+        如果你也曾为「拷卡一整晚」而头疼，欢迎一起把它做得更好。
+      </p>
+      <div class="hero-actions reveal delay-3" style="justify-content:center;">
+        <a class="btn btn-primary" href="#solution">了解更多</a>
+        <a class="btn btn-ghost" href="#tech">技术架构</a>
+      </div>
+      <div class="cta-meta reveal delay-4">
+        <span>赛道 · 学习工作</span>
+        <span>形态 · Electron 桌面应用</span>
+        <span>开源 · MIT</span>
+        <span>构建 · TRAE Work · Auto Mode</span>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div>© 2026 拾光舱 · ShíGuāng Capsule</div>
+    <div>Crafted with <span class="heart">♥</span> in TRAE Work · Auto Mode</div>
+  </footer>
+
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
+
+    const mock = document.querySelector('.app-mock');
+    if (mock && window.matchMedia('(min-width: 961px)').matches) {
+      window.addEventListener('mousemove', (e) => {
+        const x = (e.clientX / window.innerWidth - 0.5) * 6;
+        const y = (e.clientY / window.innerHeight - 0.5) * 4;
+        mock.style.transform = `perspective(1400px) rotateY(${-6 + x}deg) rotateX(${2 - y}deg)`;
+      });
+    }
+  </script>
+</body>
+</html>

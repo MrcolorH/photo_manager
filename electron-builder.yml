@@ -1,6 +1,6 @@
-appId: com.camera.photo-manager
-productName: CameraManager
-copyright: Copyright © 2026
+appId: com.shiguang.capsule
+productName: 拾光舱
+copyright: Copyright © 2026 拾光舱
 
 directories:
   output: dist-electron
@@ -20,7 +20,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 相机照片管理
+  shortcutName: 拾光舱
 
 # ===== macOS =====
 mac:

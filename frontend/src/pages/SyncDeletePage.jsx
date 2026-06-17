@@ -183,7 +183,7 @@ const SyncDeletePage = () => {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>同步删除 RAW 底片</h2>
+      <h2 style={{ marginBottom: 16, fontFamily: 'var(--font-serif)' }}>同步删除 RAW 底片</h2>
 
       <Alert
         title="功能说明"
@@ -229,7 +229,7 @@ const SyncDeletePage = () => {
             <Statistic
               title="已选择"
               value={selectedIds.length}
-              styles={{ content: { color: selectedIds.length > 0 ? '#1890ff' : '#999' } }}
+              styles={{ content: { color: selectedIds.length > 0 ? 'var(--accent)' : 'var(--muted)' } }}
               suffix="个"
             />
           </Col>
@@ -289,14 +289,14 @@ const SyncDeletePage = () => {
       {loading ? (
         <div style={{ textAlign: 'center', padding: 100 }}>
           <Spin size="large" />
-          <p style={{ marginTop: 16, color: '#999' }}>正在扫描孤立 RAW 文件...</p>
+          <p style={{ marginTop: 16, color: 'var(--muted)' }}>正在扫描孤立 RAW 文件...</p>
         </div>
       ) : orphanRaws.length === 0 ? (
         <Empty
           description="没有发现孤立的 RAW 文件"
           style={{ padding: 100 }}
         >
-          <p style={{ color: '#999', marginTop: 16 }}>
+          <p style={{ color: 'var(--muted)', marginTop: 16 }}>
             所有 RAW 文件都有对应的 JPG 照片，无需清理
           </p>
         </Empty>
@@ -336,7 +336,7 @@ const SyncDeletePage = () => {
                     height: 60,
                     borderRadius: 4,
                     overflow: 'hidden',
-                    background: '#f0f0f0',
+                    background: 'var(--bg-elevated)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center'
@@ -369,7 +369,7 @@ const SyncDeletePage = () => {
                 <List.Item.Meta
                   title={
                     <span 
-                      style={{ cursor: 'pointer', color: '#1890ff' }}
+                      style={{ cursor: 'pointer', color: 'var(--accent)' }}
                       onClick={() => handleOpenRaw(item)}
                     >
                       {item.name}
@@ -377,7 +377,7 @@ const SyncDeletePage = () => {
                   }
                   description={
                     <Tooltip title={item.path}>
-                      <span style={{ color: '#999', fontSize: 12 }}>
+                      <span style={{ color: 'var(--muted)', fontSize: 12 }}>
                         {item.path}
                       </span>
                     </Tooltip>

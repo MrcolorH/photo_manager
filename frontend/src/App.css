@@ -1,56 +1,26 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* ======== 拾光舱 · App Styles (Dual Theme) ======== */
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #f0f2f5;
-}
-
-/* 自定义滚动条 */
+/* ---- 自定义滚动条 ---- */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scrollbar-track);
   border-radius: 4px;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--scrollbar-thumb-hover);
 }
 
-/* 隐藏垂直滚动条，但保持功能 */
 body {
   overflow-y: overlay;
 }
 
-/* 优化内容区域，减少不必要的空间 */
-.ant-layout-content {
-  overflow-y: auto !important;
-}
-
-/* 让照片网格更紧凑 */
-.ant-row {
-  margin-bottom: 0 !important;
-  flex-wrap: wrap !important;
-}
-
-/* 防止列溢出 */
-.ant-col {
-  max-width: 100% !important;
-}
-
-/* 防止横向滚动 */
 body,
 html,
 #root {
@@ -58,12 +28,407 @@ html,
   max-width: 100vw;
 }
 
-/* 确保内容区域不溢出 */
+/* ======== Ant Design 通用覆盖 ======== */
+
+/* Layout */
+.ant-layout {
+  background: var(--bg) !important;
+  transition: background 0.3s ease;
+}
+.ant-layout-header {
+  background: var(--card) !important;
+  border-bottom: 1px solid var(--border) !important;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+[data-theme="light"] .ant-layout-header {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+}
+.ant-layout-sider {
+  background: var(--card) !important;
+  border-right: 1px solid var(--border) !important;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+[data-theme="light"] .ant-layout-sider {
+  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.03) !important;
+}
 .ant-layout-content {
+  background: var(--bg) !important;
+  overflow-y: auto !important;
   overflow-x: hidden !important;
+  transition: background 0.3s ease;
 }
 
-/* 图片预览遮罩层 */
+/* Menu */
+.ant-menu {
+  background: transparent !important;
+  color: var(--muted) !important;
+}
+.ant-menu-item {
+  color: var(--muted) !important;
+  border-radius: 8px !important;
+  margin: 4px 8px !important;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.ant-menu-item:hover {
+  color: var(--text) !important;
+  background: var(--accent-bg) !important;
+}
+.ant-menu-item-selected {
+  color: var(--accent) !important;
+  background: var(--accent-bg) !important;
+  font-weight: 500;
+}
+.ant-menu-item-selected::after {
+  display: none !important;
+}
+
+/* Card */
+.ant-card {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+[data-theme="light"] .ant-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+}
+.ant-card-head {
+  color: var(--text) !important;
+  border-bottom-color: var(--border) !important;
+}
+.ant-card-meta-title {
+  color: var(--text-secondary) !important;
+}
+.ant-card-meta-description {
+  color: var(--muted) !important;
+}
+.ant-card-actions {
+  background: var(--card) !important;
+  border-top-color: var(--border) !important;
+}
+.ant-card-actions > li {
+  color: var(--muted) !important;
+}
+.ant-card-actions > li:hover {
+  color: var(--accent) !important;
+}
+
+/* Input / Select */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+.ant-input::placeholder {
+  color: var(--muted) !important;
+}
+.ant-select-selection-item {
+  color: var(--text) !important;
+}
+.ant-select-arrow {
+  color: var(--muted) !important;
+}
+
+/* Dropdown */
+.ant-dropdown-menu {
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
+}
+.ant-dropdown-menu-item {
+  color: var(--text) !important;
+}
+.ant-dropdown-menu-item:hover {
+  background: var(--accent-bg) !important;
+}
+
+/* Button */
+.ant-btn-default:not(.ant-btn-dangerous) {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+.ant-btn-default:not(.ant-btn-dangerous):hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+.ant-btn-primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-text-on) !important;
+  font-weight: 500;
+}
+.ant-btn-primary:hover {
+  background: var(--accent-light) !important;
+  border-color: var(--accent-light) !important;
+}
+.ant-btn-dangerous {
+  background: var(--danger) !important;
+  border-color: var(--danger) !important;
+  color: #fff !important;
+}
+.ant-btn-dangerous:hover {
+  opacity: 0.85;
+}
+.ant-btn-dangerous[disabled],
+.ant-btn-dangerous[disabled]:hover {
+  background: var(--border) !important;
+  border-color: var(--border) !important;
+  color: var(--muted) !important;
+  opacity: 1;
+}
+
+/* Tag */
+.ant-tag {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--muted) !important;
+}
+
+/* Table */
+.ant-table {
+  background: var(--card) !important;
+  color: var(--text) !important;
+}
+.ant-table-thead > tr > th {
+  background: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  border-bottom-color: var(--border) !important;
+}
+.ant-table-tbody > tr > td {
+  border-bottom-color: var(--border) !important;
+  color: var(--text) !important;
+}
+.ant-table-tbody > tr:hover > td {
+  background: var(--accent-bg) !important;
+}
+
+/* Modal */
+.ant-modal-content {
+  background: var(--card) !important;
+  color: var(--text) !important;
+}
+[data-theme="light"] .ant-modal-content {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12) !important;
+}
+.ant-modal-header {
+  background: var(--card) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.ant-modal-title {
+  color: var(--text) !important;
+}
+.ant-modal-close {
+  color: var(--muted) !important;
+}
+.ant-modal-body {
+  color: var(--text) !important;
+}
+.ant-modal-footer {
+  border-top: 1px solid var(--border) !important;
+}
+
+/* Alert */
+.ant-alert {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+}
+.ant-alert-message {
+  color: var(--text) !important;
+}
+.ant-alert-description {
+  color: var(--muted) !important;
+}
+
+/* Statistic */
+.ant-statistic-title {
+  color: var(--muted) !important;
+}
+.ant-statistic-content {
+  color: var(--text) !important;
+}
+
+/* Collapse */
+.ant-collapse {
+  background: transparent !important;
+  border-color: var(--border) !important;
+}
+.ant-collapse-header {
+  color: var(--text-secondary) !important;
+}
+.ant-collapse-content {
+  background: transparent !important;
+  color: var(--text) !important;
+  border-top-color: var(--border) !important;
+}
+.ant-collapse-content-box {
+  color: var(--text) !important;
+}
+
+/* Steps */
+.ant-steps-item-title {
+  color: var(--muted) !important;
+}
+.ant-steps-item-process > .ant-steps-item-container > .ant-steps-item-content > .ant-steps-item-title {
+  color: var(--accent) !important;
+}
+.ant-steps-item-finish > .ant-steps-item-container > .ant-steps-item-content > .ant-steps-item-title {
+  color: var(--text-secondary) !important;
+}
+
+/* Pagination */
+.ant-pagination-item {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+}
+.ant-pagination-item a {
+  color: var(--muted) !important;
+}
+.ant-pagination-item-active {
+  border-color: var(--accent) !important;
+}
+.ant-pagination-item-active a {
+  color: var(--accent) !important;
+}
+.ant-pagination-prev,
+.ant-pagination-next {
+  color: var(--muted) !important;
+}
+.ant-pagination-options {
+  color: var(--muted) !important;
+}
+
+/* Empty */
+.ant-empty-description {
+  color: var(--muted) !important;
+}
+
+/* Spin */
+.ant-spin-text {
+  color: var(--muted) !important;
+}
+
+/* Form */
+.ant-form-item-label > label {
+  color: var(--text-secondary) !important;
+}
+.ant-form-item-explain {
+  color: var(--muted) !important;
+}
+
+/* Descriptions */
+.ant-descriptions-bordered .ant-descriptions-item-label {
+  background: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+}
+.ant-descriptions-bordered .ant-descriptions-item-content {
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+.ant-descriptions-bordered .ant-descriptions-row {
+  border-color: var(--border) !important;
+}
+
+/* List */
+.ant-list-item {
+  border-bottom-color: var(--border) !important;
+  color: var(--text) !important;
+}
+.ant-list-item-meta-title {
+  color: var(--text) !important;
+}
+.ant-list-item-meta-description {
+  color: var(--muted) !important;
+}
+
+/* Divider */
+.ant-divider {
+  border-top-color: var(--border) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Progress */
+.ant-progress-text {
+  color: var(--text) !important;
+}
+
+/* Popconfirm / Popover */
+.ant-popover-inner {
+  background: var(--card) !important;
+}
+.ant-popconfirm-message {
+  color: var(--text) !important;
+}
+.ant-popconfirm-description {
+  color: var(--muted) !important;
+}
+
+/* Radio / Checkbox */
+.ant-radio-wrapper,
+.ant-checkbox-wrapper {
+  color: var(--text) !important;
+}
+
+/* Tooltip */
+.ant-tooltip-inner {
+  background: var(--card) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* ======== 照片卡片 ======== */
+.photo-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+}
+.photo-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, var(--shadow-strength));
+  border-color: var(--accent-border) !important;
+}
+.photo-card .ant-card-cover {
+  flex-shrink: 0;
+}
+.photo-card .ant-card-cover .ant-image {
+  width: 100%;
+  height: 120px;
+  display: block;
+}
+.photo-card .ant-card-body {
+  padding: 8px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.photo-card .ant-card-meta-title {
+  font-size: 11px !important;
+  margin-bottom: 4px !important;
+  color: var(--text-secondary) !important;
+}
+.photo-card .ant-card-meta-description {
+  font-size: 10px !important;
+  color: var(--muted) !important;
+}
+
+/* Row / Col */
+.ant-row {
+  margin-bottom: 0 !important;
+  flex-wrap: wrap !important;
+}
+.ant-col {
+  max-width: 100% !important;
+}
+
+/* ======== 图片预览遮罩 ======== */
 .image-preview-overlay {
   position: fixed;
   top: 0;
@@ -77,52 +442,33 @@ html,
   z-index: 1000;
 }
 
-/* 照片卡片悬停效果 */
-.photo-card {
-  transition: all 0.3s ease;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.photo-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-}
-
-.photo-card .ant-card-cover {
-  flex-shrink: 0;
-}
-
-/* 优化卡片内容，使其更紧凑 */
-.photo-card .ant-card-body {
-  padding: 8px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.photo-card .ant-card-meta-title {
-  font-size: 11px !important;
-  margin-bottom: 4px !important;
-}
-
-.photo-card .ant-card-meta-description {
-  font-size: 10px !important;
-}
-
-/* 加载动画 */
+/* ======== 加载动画 ======== */
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
-
 .loading-spin {
   animation: spin 1s linear infinite;
+}
+
+/* ======== 主题切换按钮 ======== */
+.theme-toggle-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.theme-toggle-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  transform: scale(1.08);
 }

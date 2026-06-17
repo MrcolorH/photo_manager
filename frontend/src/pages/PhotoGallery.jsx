@@ -171,6 +171,8 @@ const PhotoGallery = () => {
       if (res.data.success) {
         message.success('删除成功');
         setDeleteModalVisible(false);
+        // 从选中列表中移除已删除的照片
+        setSelectedPhotos(prev => prev.filter(id => id !== deletePhotoData.id));
         if (deleteFromPreview) {
           setDeleteFromPreview(false);
           const updated = cachedPhotos.filter(p => p.id !== deletePhotoData.id);
@@ -469,14 +471,14 @@ const PhotoGallery = () => {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 96px)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 104px)' }}>
       {/* 顶部控制栏 */}
       <div style={{ flexShrink: 0, marginBottom: 16 }}>
         <Space>
           <FilterOutlined />
           <Select
             value={selectedRepo}
-            onChange={setSelectedRepo}
+            onChange={(val) => { setSelectedRepo(val); setSelectedPhotos([]); setSelectAll(false); }}
             style={{ width: 180 }}
             placeholder="选择仓库"
           >
@@ -492,7 +494,7 @@ const PhotoGallery = () => {
           </Select>
           <Select
             value={category}
-            onChange={setCategory}
+            onChange={(val) => { setCategory(val); setSelectedPhotos([]); setSelectAll(false); }}
             style={{ width: 120 }}
           >
             <Option value="jpg">JPG 照片</Option>
@@ -502,7 +504,7 @@ const PhotoGallery = () => {
           
           <Select
             value={sortBy}
-            onChange={setSortBy}
+            onChange={(val) => { setSortBy(val); setSelectedPhotos([]); setSelectAll(false); }}
             style={{ width: 120 }}
           >
             <Option value="modifiedTime">修改时间</Option>
@@ -512,7 +514,7 @@ const PhotoGallery = () => {
           
           <Select
             value={sortOrder}
-            onChange={setSortOrder}
+            onChange={(val) => { setSortOrder(val); setSelectedPhotos([]); setSelectAll(false); }}
             style={{ width: 100 }}
           >
             <Option value="desc">降序</Option>
@@ -521,7 +523,7 @@ const PhotoGallery = () => {
         </Space>
 
         <Space>
-          <span style={{ color: '#666' }}>共 {pagination.total} 张</span>
+          <span style={{ color: 'var(--muted)' }}>共 {pagination.total} 张</span>
           {selectedPhotos.length > 0 && (
             <Tag color="blue" style={{ fontSize: 14, padding: '4px 8px' }}>
               已选中 {selectedPhotos.length} 张
@@ -529,7 +531,11 @@ const PhotoGallery = () => {
           )}
           <Button
             icon={<ReloadOutlined />}
-            onClick={fetchPhotos}
+            onClick={() => {
+              setSelectedPhotos([]);
+              setSelectAll(false);
+              fetchPhotos();
+            }}
             loading={loading}
           >
             刷新
@@ -539,7 +545,7 @@ const PhotoGallery = () => {
 
       {/* 批量操作栏 */}
       {photos.length > 0 && (
-        <div style={{ flexShrink: 0, marginBottom: 12, padding: '8px 16px', background: '#f5f5f5', borderRadius: 4 }}>
+        <div style={{ flexShrink: 0, marginBottom: 12, padding: '8px 16px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8 }}>
           <Space>
             <Checkbox checked={selectAll} onChange={handleSelectAll}>
               全选
@@ -595,12 +601,10 @@ const PhotoGallery = () => {
                           {/* 复选框 */}
                           <div style={{ 
                             position: 'absolute', 
-                            top: 8, 
-                            left: 8, 
+                            top: 0, 
+                            left: 0, 
                             zIndex: 10,
-                            background: 'rgba(255, 255, 255, 0.9)',
-                            borderRadius: 4,
-                            padding: 2
+                            padding: 4
                           }}>
                             <Checkbox
                               checked={selectedPhotos.includes(photo.id)}
@@ -613,7 +617,7 @@ const PhotoGallery = () => {
                             <div 
                               style={{ 
                                 height: 120, 
-                                background: '#000',
+                                background: '#0a0908',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -642,13 +646,13 @@ const PhotoGallery = () => {
                                 left: 0,
                                 right: 0,
                                 bottom: 0,
-                                background: '#333',
+                                background: 'var(--border)',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 flexDirection: 'column'
                               }}>
                                 <span style={{ fontSize: 48 }}>🎬</span>
-                                <span style={{ color: '#fff', marginTop: 8, fontSize: 12 }}>视频文件</span>
+                                <span style={{ color: 'var(--text)', marginTop: 8, fontSize: 12 }}>视频文件</span>
                               </div>
                               <div style={{
                                 position: 'absolute',
@@ -668,7 +672,7 @@ const PhotoGallery = () => {
                               <div 
                                 style={{ 
                                   height: 120, 
-                                  background: '#f0f0f0',
+                                  background: 'var(--bg-elevated)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -685,7 +689,7 @@ const PhotoGallery = () => {
                                   placeholder={
                                     <div style={{ 
                                       height: 120, 
-                                      background: '#f0f0f0',
+                                      background: 'var(--bg-elevated)',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center'
@@ -697,19 +701,19 @@ const PhotoGallery = () => {
                               </div>
                             ) : (
                               <div
-                                style={{ cursor: 'pointer' }}
+                                style={{ cursor: 'pointer', height: 120, overflow: 'hidden' }}
                                 onClick={() => handlePreview({ ...photo, _page: pagination.page })}
                               >
                                 <Image
                                   alt={photo.name}
                                   src={photo.thumbnailUrl}
-                                  style={{ height: 120, objectFit: 'cover' }}
+                                  style={{ width: '100%', height: 120, objectFit: 'cover' }}
                                   fallback="/placeholder-raw.svg"
                                   preview={false}
                                   placeholder={
                                     <div style={{ 
                                       height: 120, 
-                                      background: '#f0f0f0',
+                                      background: 'var(--bg-elevated)',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center'
@@ -753,7 +757,7 @@ const PhotoGallery = () => {
                           </Tooltip>
                         }
                         description={
-                          <div style={{ fontSize: 11, color: '#999' }}>
+                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                             <div>{formatFileSize(photo.size)}</div>
                             <div>{formatDate(photo.modifiedTime)}</div>
                           </div>
@@ -769,7 +773,7 @@ const PhotoGallery = () => {
 
       {/* 底部分页 - 固定 */}
       {photos.length > 0 && (
-        <div style={{ flexShrink: 0, marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ flexShrink: 0, marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
           <Pagination
             current={pagination.page}
             pageSize={pagination.pageSize}
@@ -823,7 +827,7 @@ const PhotoGallery = () => {
               选择文件夹
             </Button>
           </Space.Compact>
-          <div style={{ marginTop: 4, color: '#999', fontSize: 12 }}>
+          <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12 }}>
             点击"选择文件夹"按钮打开系统对话框，自动获取完整路径
           </div>
         </div>

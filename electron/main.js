@@ -357,7 +357,7 @@ function createTray() {
   }
 
   tray = new Tray(trayIcon);
-  tray.setToolTip('相机照片管理系统');
+  tray.setToolTip('拾光舱 · ShíGuāng Capsule');
 
   // 左键单击打开浏览器
   tray.on('click', () => {
@@ -415,7 +415,7 @@ function updateTrayMenu() {
   tray.setContextMenu(contextMenu);
 
   // 更新 tooltip
-  tray.setToolTip(`相机照片管理系统 - ${statusText}`);
+  tray.setToolTip(`拾光舱 - ${statusText}`);
 }
 
 function getStatusText() {
@@ -457,6 +457,6 @@ app.on('will-quit', async () => {
 // 单实例锁 - 防止多开
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  dialog.showErrorBox('程序已在运行', '相机照片管理系统已在后台运行，请查看系统托盘。');
+  dialog.showErrorBox('程序已在运行', '拾光舱已在后台运行，请查看系统托盘。');
   app.quit();
 }

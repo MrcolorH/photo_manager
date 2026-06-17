@@ -11,8 +11,7 @@ import {
   Checkbox,
   message,
   Popconfirm,
-  Alert,
-  Descriptions
+  Alert
 } from 'antd';
 import {
   PlusOutlined,
@@ -147,7 +146,7 @@ const RepoSettings = () => {
       key: 'name',
       render: (text, record) => (
         <Space>
-          <DatabaseOutlined style={{ color: '#1890ff' }} />
+          <DatabaseOutlined style={{ color: 'var(--accent)' }} />
           <span style={{ fontWeight: 500 }}>{text}</span>
           {record.isDefault && (
             <Tag color="blue" icon={<CheckCircleOutlined />}>默认</Tag>
@@ -161,7 +160,7 @@ const RepoSettings = () => {
       key: 'path',
       render: (text) => (
         <Space>
-          <FolderOutlined style={{ color: '#999' }} />
+          <FolderOutlined style={{ color: 'var(--muted)' }} />
           <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{text}</span>
         </Space>
       )
@@ -213,7 +212,7 @@ const RepoSettings = () => {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>存储仓库配置</h2>
+      <h2 style={{ marginBottom: 16, fontFamily: 'var(--font-serif)' }}>存储仓库配置</h2>
 
       <Alert
         message="仓库说明"
@@ -300,7 +299,7 @@ const RepoSettings = () => {
                 选择文件夹
               </Button>
             </Space.Compact>
-            <div style={{ marginTop: 4, color: '#999', fontSize: 12 }}>
+            <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12 }}>
               点击"选择文件夹"按钮打开系统对话框，自动获取完整路径
             </div>
           </Form.Item>
@@ -313,23 +312,6 @@ const RepoSettings = () => {
           </Form.Item>
         </Form>
       </Modal>
-
-      <Card title="目录结构说明" style={{ marginTop: 24 }}>
-        <Descriptions bordered column={1}>
-          <Descriptions.Item label="仓库根目录">
-            /Users/colorh/Pictures/相机照片
-          </Descriptions.Item>
-          <Descriptions.Item label="JPG 照片">
-            /Users/colorh/Pictures/相机照片/jpg/
-          </Descriptions.Item>
-          <Descriptions.Item label="RAW 底片">
-            /Users/colorh/Pictures/相机照片/raw/
-          </Descriptions.Item>
-          <Descriptions.Item label="视频文件">
-            /Users/colorh/Pictures/相机照片/video/
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
     </div>
   );
 };

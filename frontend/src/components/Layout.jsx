@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from 'react';
 import { photoApi } from '../api';
 import { useRepo } from '../contexts/RepoContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 const { Header, Sider, Content } = AntLayout;
 
@@ -17,6 +18,7 @@ const Layout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentRepoId } = useRepo();
+  const { isDark, toggleTheme } = useTheme();
   const [storageInfo, setStorageInfo] = useState({
     jpg: { count: 0, sizeFormatted: '0 B' },
     raw: { count: 0, sizeFormatted: '0 B' },
@@ -68,70 +70,132 @@ const Layout = () => {
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
       <Header style={{ 
-        background: '#001529', 
+        background: 'var(--card)', 
         display: 'flex', 
         alignItems: 'center',
-        padding: '0 24px'
+        justifyContent: 'space-between',
+        padding: '0 24px',
+        borderBottom: '1px solid var(--border)',
+        height: 64
       }}>
-        <CameraOutlined style={{ fontSize: 24, color: '#fff', marginRight: 12 }} />
-        <h1 style={{ color: '#fff', margin: 0, fontSize: 18 }}>相机照片管理系统</h1>
+        {/* 左侧：品牌标识 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dark))',
+            boxShadow: '0 0 12px rgba(212,165,116,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <CameraOutlined style={{ fontSize: 14, color: '#1a1410' }} />
+          </div>
+          <span style={{
+            fontFamily: "'Noto Serif SC', Georgia, serif",
+            fontSize: '1.15rem',
+            color: 'var(--text)',
+            fontWeight: 700,
+            letterSpacing: '0.02em'
+          }}>
+            拾光舱
+          </span>
+          <span style={{
+            fontSize: '0.65rem',
+            letterSpacing: '0.12em',
+            color: 'var(--gold)',
+            padding: '2px 10px',
+            border: isDark ? '1px solid var(--gold-dark)' : 'none',
+            borderRadius: 999,
+            marginLeft: 4
+          }}>
+            ShíGuāng
+          </span>
+        </div>
+
+        {/* 右侧：主题切换 */}
+        <button
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={isDark ? '切换到明亮主题' : '切换到暗色主题'}
+        >
+          {isDark ? '☀' : '☾'}
+        </button>
       </Header>
       
       <AntLayout>
         <Sider 
-          width={200} 
-          theme="light" 
+          width={210} 
+          theme="dark" 
           style={{ 
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            borderRight: '1px solid var(--border)',
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            background: 'var(--card)',
+            overflow: 'hidden'
           }}
         >
-          <Menu
-            mode="inline"
-            selectedKeys={[location.pathname]}
-            items={menuItems}
-            onClick={handleMenuClick}
-            style={{ flex: 1, borderRight: 0, overflowY: 'auto' }}
-          />
+          {/* 菜单区域 - 固定高度，不产生滚动条 */}
+          <div style={{ 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            overflow: 'hidden' 
+          }}>
+            <Menu
+              mode="inline"
+              theme="dark"
+              selectedKeys={[location.pathname]}
+              items={menuItems}
+              onClick={handleMenuClick}
+              style={{ 
+                flex: 1, 
+                borderRight: 0, 
+                background: 'transparent',
+                overflow: 'hidden'
+              }}
+            />
+          </div>
           
-          <div style={{ borderTop: '1px solid #f0f0f0', flexShrink: 0 }}>
+          {/* 存储统计 - 固定在底部 */}
+          <div style={{ borderTop: '1px solid var(--border)', flexShrink: 0 }}>
             <Collapse 
               ghost 
               defaultActiveKey={[]}
               items={[
                 {
                   key: '1',
-                  label: '存储统计',
+                  label: <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>存储统计</span>,
                   children: (
-                    <Row gutter={[0, 12]}>
+                    <Row gutter={[0, 10]}>
                       <Col span={24}>
-                        <Card size="small" style={{ background: '#f6ffed', borderColor: '#b7eb8f' }}>
+                        <Card size="small" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
                           <Statistic
-                            title="JPG 照片"
+                            title={<span style={{ color: 'var(--muted)' }}>JPG 照片</span>}
                             value={storageInfo.jpg.count}
-                            suffix={`张 (${storageInfo.jpg.sizeFormatted})`}
-                            styles={{ content: { fontSize: 14 } }}
+                            suffix={<span style={{ fontSize: 12, color: 'var(--muted)' }}>张 ({storageInfo.jpg.sizeFormatted})</span>}
+                            styles={{ content: { fontSize: 14, color: 'var(--accent-light)' } }}
                           />
                         </Card>
                       </Col>
                       <Col span={24}>
-                        <Card size="small" style={{ background: '#fff7e6', borderColor: '#ffd591' }}>
+                        <Card size="small" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
                           <Statistic
-                            title="RAW 底片"
+                            title={<span style={{ color: 'var(--muted)' }}>RAW 底片</span>}
                             value={storageInfo.raw.count}
-                            suffix={`张 (${storageInfo.raw.sizeFormatted})`}
-                            styles={{ content: { fontSize: 14 } }}
+                            suffix={<span style={{ fontSize: 12, color: 'var(--muted)' }}>张 ({storageInfo.raw.sizeFormatted})</span>}
+                            styles={{ content: { fontSize: 14, color: 'var(--accent)' } }}
                           />
                         </Card>
                       </Col>
                       <Col span={24}>
-                        <Card size="small" style={{ background: '#e6f7ff', borderColor: '#91d5ff' }}>
+                        <Card size="small" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
                           <Statistic
-                            title="视频文件"
+                            title={<span style={{ color: 'var(--muted)' }}>视频文件</span>}
                             value={storageInfo.video.count}
-                            suffix={`个 (${storageInfo.video.sizeFormatted})`}
-                            styles={{ content: { fontSize: 14 } }}
+                            suffix={<span style={{ fontSize: 12, color: 'var(--muted)' }}>个 ({storageInfo.video.sizeFormatted})</span>}
+                            styles={{ content: { fontSize: 14, color: 'var(--text-secondary)' } }}
                           />
                         </Card>
                       </Col>
@@ -144,8 +208,8 @@ const Layout = () => {
         </Sider>
         
         <Content style={{ 
-          padding: '16px 24px', 
-          background: '#fff',
+          padding: '20px 28px', 
+          background: 'var(--bg)',
           overflow: 'auto',
           height: 'calc(100vh - 64px)',
           flex: 1,

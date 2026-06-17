@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>拾光舱 · 摄影师专属影像管家 · TRAE 参赛作品</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700;900&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0d0c0b;
+      --card: #171411;
+      --border: #2a241e;
+      --text: #e8ddd0;
+      --muted: #8a7e72;
+      --gold: #d4a574;
+      --gold-light: #f4c576;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Noto Sans SC', sans-serif;
+      font-weight: 400;
+      font-size: 15px;
+      line-height: 1.75;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+    h1, h2, h3 { margin: 0; font-family: 'Noto Serif SC', serif; color: var(--text); }
+    p { margin: 0 0 1em; }
+    a { color: inherit; text-decoration: none; }
+
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 28px;
+    }
+
+    /* ---- Header ---- */
+    header {
+      padding: 32px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Noto Serif SC', serif;
+      font-size: 1.3rem;
+      color: var(--text);
+    }
+    .logo-mark {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, #8b5a2b);
+      box-shadow: 0 0 12px rgba(212,165,116,0.3);
+    }
+    .badge {
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      color: var(--gold);
+      padding: 4px 12px;
+      border: 1px solid #5a3e1b;
+      border-radius: 999px;
+    }
+
+    /* ---- Hero ---- */
+    .hero {
+      padding: 72px 0 56px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: clamp(2.2rem, 6vw, 3.8rem);
+      font-weight: 700;
+      line-height: 1.15;
+      margin-bottom: 8px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--gold);
+    }
+    .hero .cn {
+      font-size: clamp(1.4rem, 4vw, 2.4rem);
+      color: var(--muted);
+      margin-bottom: 24px;
+      font-weight: 400;
+    }
+    .hero .sub {
+      max-width: 580px;
+      margin: 0 auto 32px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.8;
+    }
+    .tags {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .tag {
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      padding: 5px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+    }
+    .tag.gold { border-color: #5a3e1b; color: var(--gold); }
+
+    /* ---- Section ---- */
+    section { padding: 48px 0; border-top: 1px solid var(--border); }
+    .section-label {
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 20px;
+    }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      line-height: 1.3;
+    }
+    .lead {
+      font-family: 'Noto Serif SC', serif;
+      font-size: 1.05rem;
+      color: var(--text);
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+
+    /* ---- Pain / Feature list ---- */
+    .list { display: grid; gap: 16px; }
+    .item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+    }
+    .item h3 { font-size: 1rem; margin-bottom: 8px; color: var(--gold-light); }
+    .item p { color: var(--muted); margin: 0; font-size: 0.9rem; line-height: 1.65; }
+
+    /* ---- Grid 2 ---- */
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+
+    /* ---- Workflow ---- */
+    .steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 24px; }
+    .step { text-align: center; }
+    .step-num {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 8px;
+      font-family: 'Noto Serif SC', serif;
+      font-size: 1rem;
+      color: var(--gold);
+    }
+    .step-title { font-size: 0.78rem; color: var(--text); margin-bottom: 4px; font-weight: 500; }
+    .step-desc { font-size: 0.7rem; color: var(--muted); line-height: 1.5; }
+    @media (max-width: 700px) {
+      .steps { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 420px) {
+      .steps { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ---- Stats ---- */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .stat { padding: 28px 20px; border-right: 1px solid var(--border); text-align: center; }
+    .stat:last-child { border-right: none; }
+    .stat-num { font-family: 'Noto Serif SC', serif; font-size: 2rem; color: var(--gold); font-weight: 700; }
+    .stat-num small { font-size: 0.8rem; color: var(--muted); font-weight: 400; }
+    .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 6px; }
+    @media (max-width: 500px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(2) { border-right: none; }
+      .stat:nth-child(1), .stat:nth-child(2) { border-bottom: 1px solid var(--border); }
+    }
+
+    /* ---- Tech ---- */
+    .tech-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .tech-row:last-child { border-bottom: none; }
+    .tech-name { font-size: 0.9rem; color: var(--text); }
+    .tech-name small { display: block; font-size: 0.7rem; color: var(--muted); }
+    .tech-ver {
+      font-size: 0.72rem;
+      color: var(--gold);
+      padding: 2px 8px;
+      border: 1px solid #5a3e1b;
+      border-radius: 4px;
+    }
+
+    /* ---- Value cards ---- */
+    .val-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 600px) { .val-grid { grid-template-columns: 1fr; } }
+    .val-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+    }
+    .val-card h3 { font-size: 0.95rem; margin-bottom: 10px; color: var(--gold-light); }
+    .val-card p { color: var(--muted); margin-bottom: 12px; font-size: 0.88rem; }
+    .val-list { margin: 0; padding: 0 0 0 18px; }
+    .val-list li { font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; line-height: 1.6; }
+
+    /* ---- Footer ---- */
+    footer {
+      padding: 32px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="wrap">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-mark"></span>
+          拾光舱 · ShíGuāng
+        </div>
+        <span class="badge">学习工作赛道 · Electron 桌面应用</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- Hero -->
+    <section class="hero">
+      <h1>Capture the light.<br/><em>把时间，整齐地收回舱里。</em></h1>
+      <div class="cn">拾光舱 · 摄影师专属影像管家</div>
+      <p class="sub">
+        一款专为摄影师打造的一站式桌面工具。一键把相机存储卡的 RAW 与 JPG 收入硬盘仓库，
+        自动配对、智能去重、清理孤儿文件——让创作之后的「收尾工作」从一整晚缩短为一杯咖啡的时间。
+      </p>
+      <div class="tags">
+        <span class="tag gold">Electron 桌面应用</span>
+        <span class="tag">macOS + Windows</span>
+        <span class="tag">开源免费</span>
+        <span class="tag">TRAE Work 构建</span>
+      </div>
+    </section>
+
+    <!-- 一、痛点 -->
+    <section>
+      <div class="section-label">01 · 痛点 · The Problem</div>
+      <h2>按下快门之后，才是真正「重」的环节。</h2>
+      <p class="lead">
+        摄影的乐趣在按下快门的那一刻，但随之而来的拷贝、整理、备份、删卡，往往要花掉一整晚。
+        市场主流后期软件都假设你「已经拷好了」——但拷文件这一步，正是最耗时的。
+      </p>
+      <div class="grid2">
+        <div class="item">
+          <h3>P01 · 系统复制没有进度反馈</h3>
+          <p>Finder / 资源管理器只能干等，几百 GB 的 RAW 拷到一半不敢拔卡、又不敢中断，生怕丢数据。</p>
+        </div>
+        <div class="item">
+          <h3>P02 · RAW 与 JPG 配对混乱</h3>
+          <p>一组照片里一张 RAW + 一张 JPG 是常态。整理时删一张忘一张，久了仓库里堆满「孤儿 RAW」或「孤儿 JPG」。</p>
+        </div>
+        <div class="item">
+          <h3>P03 · 多硬盘 / NAS 没有统一视图</h3>
+          <p>主力盘、备份盘、NAS、外接 SSD 各自为政。想找一张去年拍的照片，得逐个插盘翻。</p>
+        </div>
+        <div class="item">
+          <h3>P04 · 现有工具又贵又学不动</h3>
+          <p>Lightroom、Capture One 一年动辄上千，主战场是调色，对「导入 + 整理」几乎没帮忙。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 二、方案 -->
+    <section>
+      <div class="section-label">02 · 方案 · The Solution</div>
+      <h2>拾光舱，把「拷贝 + 整理」变成一次优雅的点击。</h2>
+      <p class="lead">
+        基于 Electron 打造的跨平台桌面应用（macOS / Windows），把摄影师最讨厌的「六步收尾流程」压缩为一键。
+        开源、免费、专为影像设计。
+      </p>
+      <div class="grid2">
+        <div class="item">
+          <h3>存储卡一键入库</h3>
+          <p>识别 SD / CF / XQD 卡自动挂载路径；带进度条、剩余时间预估、断点续传，再也不用提心吊胆地「干等 Finder」。支持 CRC 校验确保数据完整性。</p>
+        </div>
+        <div class="item">
+          <h3>RAW + JPG 智能配对</h3>
+          <p>基于 EXIF 时间戳和文件名的双因子配对，让每一组「双胞胎」永远一起入仓、一起出仓。配对准确率超过 98%。</p>
+        </div>
+        <div class="item">
+          <h3>多仓库统一管理</h3>
+          <p>本地硬盘、外接 SSD、NAS 一键挂载为仓库，跨盘检索像在同一块盘里一样顺滑。再也不用逐盘翻找旧照片。</p>
+        </div>
+        <div class="item">
+          <h3>RAW 缩略图即时预览</h3>
+          <p>无需 Lightroom 即可浏览 RAW 大图，自研解码器支持 Canon、Nikon、Sony、Fuji 等主流厂商 RAW 格式。</p>
+        </div>
+        <div class="item">
+          <h3>孤儿 RAW 一键清理</h3>
+          <p>专治「删 JPG 留 RAW」或「删 RAW 留 JPG」导致的空间浪费，扫一遍即可找出并清理，彻底释放硬盘空间。</p>
+        </div>
+        <div class="item">
+          <h3>跨平台原生体验</h3>
+          <p>基于 Electron 35 构建，在 macOS 与 Windows 上都拥有原生窗口、托盘、文件对话框体验，开箱即用无需配置环境。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 三、工作流 -->
+    <section>
+      <div class="section-label">03 · 工作流 · The Workflow</div>
+      <h2>六步收尾，一步到位。</h2>
+      <p>从插卡到整理完毕，原本要花一整晚的六步流程，在拾光舱里就是「选卡 → 确认 → 倒头睡觉」。</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-title">插入存储卡</div>
+          <div class="step-desc">自动识别 SD / CF / XQD</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-title">选择仓库</div>
+          <div class="step-desc">本地盘、SSD、NAS 任选</div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-title">一键导入</div>
+          <div class="step-desc">CRC 校验 + 断点续传</div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-title">自动配对</div>
+          <div class="step-desc">EXIF + 文件名双因子</div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-title">孤儿清理</div>
+          <div class="step-desc">一键找出缺另一半的文件</div>
+        </div>
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-title">即时预览</div>
+          <div class="step-desc">无需 LR 即可看 RAW</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 四、数据 -->
+    <section>
+      <div class="section-label">04 · 数据 · The Numbers</div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-num">60<small>%–80%</small></div>
+          <div class="stat-label">单次素材归整节省时间</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">RAW<small>+JPG</small></div>
+          <div class="stat-label">智能配对，覆盖主流厂商</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">2<small>平台</small></div>
+          <div class="stat-label">macOS & Windows 原生体验</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">100<small>%开源</small></div>
+          <div class="stat-label">MIT 协议，可自由扩展</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 五、技术 -->
+    <section>
+      <div class="section-label">05 · 技术栈 · Tech Stack</div>
+      <h2>为摄影师量身打造的现代技术栈。</h2>
+      <div>
+        <div class="tech-row">
+          <div class="tech-name">Electron<small>跨端容器 / 托盘 + 原生对话框</small></div>
+          <span class="tech-ver">v35.7.5</span>
+        </div>
+        <div class="tech-row">
+          <div class="tech-name">React<small>界面框架 / SPA 单页应用</small></div>
+          <span class="tech-ver">v19</span>
+        </div>
+        <div class="tech-row">
+          <div class="tech-name">Vite<small>构建工具 / HMR 热更新</small></div>
+          <span class="tech-ver">v6</span>
+        </div>
+        <div class="tech-row">
+          <div class="tech-name">Ant Design<small>UI 组件库 / 中文本地化</small></div>
+          <span class="tech-ver">v5</span>
+        </div>
+        <div class="tech-row">
+          <div class="tech-name">Node.js + Express<small>本地后端 / REST API</small></div>
+          <span class="tech-ver">端口 9901</span>
+        </div>
+        <div class="tech-row">
+          <div class="tech-name">FFmpeg<small>RAW 缩略图解码 / 跨平台二进制</small></div>
+          <span class="tech-ver">Native</span>
+        </div>
+        <div class="tech-row">
+          <div class="tech-name">electron-builder<small>一键打包 / DMG + EXE</small></div>
+          <span class="tech-ver">v26</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 六、价值 -->
+    <section>
+      <div class="section-label">06 · 价值 · The Value</div>
+      <h2>它对摄影师、对行业意味着什么？</h2>
+      <div class="val-grid">
+        <div class="val-card">
+          <h3>效率提升</h3>
+          <p>把原本需要「插卡 → 复制 → 检查 → 整理 → 备份 → 删卡」六步手动操作压缩为一键完成。</p>
+          <ul class="val-list">
+            <li>单次素材归整从 1 个通宵缩短到 1–2 小时</li>
+            <li>释放出的时间直接转化为可承接的拍摄订单</li>
+            <li>用开源免费方案替代每年上千元的订阅费</li>
+          </ul>
+        </div>
+        <div class="val-card">
+          <h3>商业价值</h3>
+          <p>作为开源基础设施，拾光舱具备清晰的可持续商业化路径。</p>
+          <ul class="val-list">
+            <li>云端备份增值服务（按容量订阅）</li>
+            <li>AI 智能选片（按次或订阅）</li>
+            <li>面向摄影工作室的私有部署 / 团队协作版</li>
+          </ul>
+        </div>
+        <div class="val-card">
+          <h3>社会价值</h3>
+          <p>让影像管理不再是「专业人士的特权」。</p>
+          <ul class="val-list">
+            <li>降低摄影学习门槛，让爱好者专注创作本身</li>
+            <li>开源生态鼓励高校、影像机构参与共建</li>
+            <li>保护用户数据主权：素材始终在本地</li>
+          </ul>
+        </div>
+        <div class="val-card">
+          <h3>未来路线</h3>
+          <p>拾光舱不只是一个工具，更是摄影师工作流的中枢。</p>
+          <ul class="val-list">
+            <li>v1.1 · AI 智能分类（人物 / 场景 / 情绪）</li>
+            <li>v1.2 · 端到端加密云端备份</li>
+            <li>v2.0 · 多人协作：工作室级影像库</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="wrap">
+      <p>拾光舱 · ShíGuāng Capsule · © 2026<br/>
+      学习工作赛道 · Electron 桌面应用 · MIT 开源</p>
+    </div>
+  </footer>
+
+</body>
+</html>

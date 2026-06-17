@@ -278,17 +278,39 @@ const ImportPage = () => {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 24 }}>从存储卡导入照片</h2>
-
-      <Steps current={currentStep} style={{ marginBottom: 40 }}>
-        <Step title="选择路径" description="输入存储卡路径" />
-        <Step title="导入中" description="扫描并复制文件" />
-        <Step title="完成" description="导入结果" />
-      </Steps>
+      {/* 页面头部 */}
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+          <div style={{
+            width: 42,
+            height: 42,
+            borderRadius: 10,
+            background: 'var(--accent-bg)',
+            border: '1px solid var(--accent-border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <ImportOutlined style={{ fontSize: 20, color: 'var(--accent)' }} />
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontFamily: "'Noto Serif SC', Georgia, serif", fontSize: 20 }}>存储卡导入</h2>
+            <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: 13 }}>
+              一键将相机存储卡的 RAW、JPG 和视频收入仓库
+            </p>
+          </div>
+        </div>
+        <Steps current={currentStep} size="small">
+          <Step title="选择路径" description="输入存储卡路径" />
+          <Step title="导入中" description="扫描并复制文件" />
+          <Step title="完成" description="导入结果" />
+        </Steps>
+      </Card>
 
       {currentStep === 0 && (
         <Card>
-          <Space direction="vertical" style={{ width: '100%' }} size="large">
+          <Space direction="vertical" style={{ width: '100%' }} size={20}>
             <Alert
               message="使用说明"
               description={
@@ -297,7 +319,7 @@ const ImportPage = () => {
                   <p>2. 输入存储卡的根目录路径（如 /Volumes/SD_CARD）</p>
                   <p>3. 系统会自动扫描所有 JPG、RAW 和视频文件</p>
                   <p>4. 文件将按类型分类存储到对应目录</p>
-                  <p style={{ color: '#52c41a', fontWeight: 500 }}>✓ 支持增量导入：已存在的文件不会被覆盖</p>
+                  <p style={{ color: 'var(--success)', fontWeight: 500 }}>✓ 支持增量导入：已存在的文件不会被覆盖</p>
                 </div>
               }
               type="info"
@@ -341,7 +363,7 @@ const ImportPage = () => {
                   管理
                 </Button>
               </Space>
-              <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+              <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
                 照片将导入到选中的仓库中
               </div>
             </div>
@@ -368,7 +390,7 @@ const ImportPage = () => {
                   选择文件夹
                 </Button>
               </Space.Compact>
-              <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+              <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
                 默认扫描路径: {defaultPath} | 点击"选择文件夹"按钮打开系统对话框，自动获取完整路径
               </div>
             </div>
@@ -388,7 +410,7 @@ const ImportPage = () => {
       )}
 
       {currentStep === 1 && (
-        <Card style={{ textAlign: 'center', padding: 60 }}>
+        <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
           <Spin size="large" style={{ marginBottom: 24 }} />
           <h3>正在导入中...</h3>
           
@@ -440,7 +462,7 @@ const ImportPage = () => {
                 title="已处理"
                 value={progressInfo.processed}
                 suffix="个"
-                valueStyle={{ color: '#52c41a' }}
+                valueStyle={{ color: 'var(--success)' }}
               />
             </Col>
             <Col span={6}>
@@ -448,7 +470,7 @@ const ImportPage = () => {
                 title="剩余"
                 value={progressInfo.remaining}
                 suffix="个"
-                valueStyle={{ color: '#fa8c16' }}
+                valueStyle={{ color: 'var(--accent)' }}
               />
             </Col>
             <Col span={6}>
@@ -456,25 +478,25 @@ const ImportPage = () => {
                 title="预计剩余时间"
                 value={progressInfo.estimatedTimeRemaining > 0 ? Math.ceil(progressInfo.estimatedTimeRemaining / 60) : progressInfo.total > 0 ? '< 1' : 0}
                 suffix="分钟"
-                valueStyle={{ color: '#1890ff' }}
+                valueStyle={{ color: 'var(--accent)' }}
               />
             </Col>
           </Row>
           
           {/* 当前处理的文件 */}
           {progressInfo.currentFile && progressInfo.total > 0 && (
-            <div style={{ marginBottom: 16, color: '#666' }}>
+            <div style={{ marginBottom: 16, color: 'var(--muted)' }}>
               {progressInfo.processed < progressInfo.total ? (
                 <>
-                  正在处理: <strong>{progressInfo.currentFile}</strong>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                  正在处理: <strong style={{ color: 'var(--text)' }}>{progressInfo.currentFile}</strong>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
                     第 {progressInfo.processed + 1} 个文件，共 {progressInfo.total} 个
                   </div>
                 </>
               ) : (
                 <>
-                  最后处理: <strong>{progressInfo.currentFile}</strong>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                  最后处理: <strong style={{ color: 'var(--text)' }}>{progressInfo.currentFile}</strong>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
                     所有文件已处理完毕
                   </div>
                 </>
@@ -497,7 +519,7 @@ const ImportPage = () => {
                 返回重新选择
               </Button>
             ) : (
-              <p style={{ color: '#999' }}>
+              <p style={{ color: 'var(--muted)' }}>
                 {progressInfo.total > 0 
                   ? '正在扫描存储卡并复制文件，请稍候' 
                   : '正在扫描文件夹中的媒体文件，请稍候...'}
@@ -508,7 +530,7 @@ const ImportPage = () => {
       )}
 
       {currentStep === 2 && importResult && (
-        <div>
+        <Card>
           {/* 根据导入结果显示不同的提示 */}
           {importResult.jpgCount + importResult.rawCount + importResult.videoCount === 0 ? (
             // 没有导入任何文件
@@ -519,7 +541,7 @@ const ImportPage = () => {
                 description={
                   <div>
                     <p>扫描到 {importResult.skippedCount} 个文件，但都已存在于目标仓库中。</p>
-                    <p style={{ marginTop: 8, color: '#666' }}>
+                    <p style={{ marginTop: 8, color: 'var(--muted)' }}>
                       💡 提示：系统使用增量导入模式，不会覆盖已存在的文件。如果您想重新导入，请先删除目标仓库中的旧文件。
                     </p>
                   </div>
@@ -550,7 +572,7 @@ const ImportPage = () => {
                 <div>
                   <p>文件已成功导入到仓库 <strong>{importResult.targetRepo}</strong></p>
                   {importResult.skippedCount > 0 && (
-                    <p style={{ marginTop: 8, marginBottom: 0, color: '#666' }}>
+                    <p style={{ marginTop: 8, marginBottom: 0, color: 'var(--muted)' }}>
                       💡 跳过的文件已存在于目标位置，未进行覆盖
                     </p>
                   )}
@@ -569,11 +591,11 @@ const ImportPage = () => {
                 <Statistic
                   title="JPG 照片"
                   value={importResult.jpgCount}
-                  prefix={<FileImageOutlined style={{ color: '#52c41a' }} />}
+                  prefix={<FileImageOutlined style={{ color: 'var(--success)' }} />}
                   suffix="张"
                 />
                 {importResult.details.jpg.length > 0 && (
-                  <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+                  <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
                     总大小: {formatFileSize(getTotalSize(importResult.details.jpg))}
                   </div>
                 )}
@@ -584,11 +606,11 @@ const ImportPage = () => {
                 <Statistic
                   title="RAW 底片"
                   value={importResult.rawCount}
-                  prefix={<FileOutlined style={{ color: '#fa8c16' }} />}
+                  prefix={<FileOutlined style={{ color: 'var(--accent)' }} />}
                   suffix="张"
                 />
                 {importResult.details.raw.length > 0 && (
-                  <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+                  <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
                     总大小: {formatFileSize(getTotalSize(importResult.details.raw))}
                   </div>
                 )}
@@ -599,11 +621,11 @@ const ImportPage = () => {
                 <Statistic
                   title="视频文件"
                   value={importResult.videoCount}
-                  prefix={<VideoCameraOutlined style={{ color: '#1890ff' }} />}
+                  prefix={<VideoCameraOutlined style={{ color: 'var(--info)' }} />}
                   suffix="个"
                 />
                 {importResult.details.video.length > 0 && (
-                  <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+                  <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
                     总大小: {formatFileSize(getTotalSize(importResult.details.video))}
                   </div>
                 )}
@@ -680,7 +702,7 @@ const ImportPage = () => {
               />
             </>
           )}
-        </div>
+        </Card>
       )}
 
       {/* 添加仓库弹窗 */}
@@ -730,7 +752,7 @@ const ImportPage = () => {
                 选择文件夹
               </Button>
             </Space.Compact>
-            <div style={{ marginTop: 4, color: '#999', fontSize: 12 }}>
+            <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12 }}>
               点击"选择文件夹"按钮打开系统对话框，自动获取完整路径
             </div>
           </Form.Item>
