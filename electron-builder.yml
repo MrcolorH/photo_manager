@@ -1,5 +1,6 @@
 appId: com.shiguang.capsule
 productName: 拾光舱
+artifactName: "Shiguang Capsule-${version}.${ext}"
 copyright: Copyright © 2026 拾光舱
 
 directories:
@@ -15,6 +16,7 @@ win:
   icon: electron/assets/app-icon.ico
 
 nsis:
+  artifactName: "Shiguang Capsule Setup ${version}.${ext}"
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
