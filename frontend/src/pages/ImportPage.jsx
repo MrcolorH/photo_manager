@@ -408,8 +408,12 @@ const ImportPage = () => {
                   智能命名
                 </label>
               </Space>
-              <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12 }}>
-                开启后，文件将以所在子文件夹名称+序号重命名（如 100CANON-1.jpg）
+              <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12, lineHeight: 1.8 }}>
+                开启后，文件将按所在子文件夹名称重命名：
+                <br />
+                • 无中文名文件：文件夹名-序号（如 100CANON-1.jpg）
+                <br />
+                • 已有中文名文件：文件夹名_原中文名（如 100CANON_旅行第一天.jpg）
               </div>
             </div>
 

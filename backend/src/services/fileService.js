@@ -100,9 +100,18 @@ class FileService {
 
     // 智能命名：按子文件夹分组，使用每个文件的最后一级文件夹名称作为前缀
     const folderCounters = {};  // 每个子文件夹独立计数器
+    const chineseRegex = /[\u4e00-\u9fff]/;  // 匹配中文字符
     const getSmartName = (file) => {
       if (!smartNaming) return file.name;
       const parentFolder = path.basename(path.dirname(file.path));
+      const originalName = path.basename(file.name, file.extension);
+      
+      // 如果原文件名包含中文，使用 文件夹名_原中文名 格式，不用序号
+      if (chineseRegex.test(originalName)) {
+        return `${parentFolder}_${originalName}${file.extension}`;
+      }
+      
+      // 非中文名使用 文件夹名-序号 格式
       if (!folderCounters[parentFolder]) {
         folderCounters[parentFolder] = 1;
       }
