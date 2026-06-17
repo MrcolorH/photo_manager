@@ -20,7 +20,8 @@ import {
   Modal,
   Form,
   Radio,
-  Table
+  Table,
+  Switch
 } from 'antd';
 import {
   FolderOpenOutlined,
@@ -68,6 +69,7 @@ const ImportPage = () => {
   const [form] = Form.useForm();
   const [repoPath, setRepoPath] = useState('');
   const [repoPathSelecting, setRepoPathSelecting] = useState(false);
+  const [smartNaming, setSmartNaming] = useState(false);
 
   // 当仓库切换时同步到全局上下文
   useEffect(() => {
@@ -244,7 +246,7 @@ const ImportPage = () => {
         setProgressInfo(progress);
       });
       
-      const res = await importApi.importFromCard(sourcePath.trim(), selectedRepo);
+      const res = await importApi.importFromCard(sourcePath.trim(), selectedRepo, smartNaming);
       
       if (res.data.success) {
         setImportResult(res.data.data);
@@ -392,6 +394,22 @@ const ImportPage = () => {
               </Space.Compact>
               <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
                 默认扫描路径: {defaultPath} | 点击"选择文件夹"按钮打开系统对话框，自动获取完整路径
+              </div>
+            </div>
+
+            <div>
+              <Space>
+                <Switch
+                  checked={smartNaming}
+                  onChange={setSmartNaming}
+                  id="smartNaming"
+                />
+                <label htmlFor="smartNaming" style={{ fontWeight: 500, cursor: 'pointer' }}>
+                  智能命名
+                </label>
+              </Space>
+              <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12 }}>
+                开启后，文件将以所在子文件夹名称+序号重命名（如 100CANON-1.jpg）
               </div>
             </div>
 

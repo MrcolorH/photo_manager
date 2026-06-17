@@ -47,7 +47,7 @@ class FileService {
   }
 
   // 从存储卡导入照片（增量导入，不覆盖已有文件）
-  async importFromCard(sourcePath, progressCallback = null) {
+  async importFromCard(sourcePath, progressCallback = null, smartNaming = false) {
     console.log('开始扫描目录:', sourcePath);
     
     // 扫描存储卡中的所有媒体文件
@@ -98,13 +98,27 @@ class FileService {
       });
     }
 
+    // 智能命名：按子文件夹分组，使用每个文件的最后一级文件夹名称作为前缀
+    const folderCounters = {};  // 每个子文件夹独立计数器
+    const getSmartName = (file) => {
+      if (!smartNaming) return file.name;
+      const parentFolder = path.basename(path.dirname(file.path));
+      if (!folderCounters[parentFolder]) {
+        folderCounters[parentFolder] = 1;
+      }
+      const name = `${parentFolder}-${folderCounters[parentFolder]}${file.extension}`;
+      folderCounters[parentFolder]++;
+      return name;
+    };
+
     // 按类型分类复制文件
     for (const file of files) {
       console.log(`处理文件 ${processedFiles + 1}/${totalFiles}: ${file.name}`);
       
       try {
         const targetDir = this.getCategoryPath(file.type);
-        const targetPath = path.join(targetDir, file.name);
+        const targetFileName = getSmartName(file);
+        const targetPath = path.join(targetDir, targetFileName);
         const copyResult = await copyFile(file.path, targetPath);
         
         if (copyResult.skipped) {
@@ -112,7 +126,7 @@ class FileService {
           results.skipped.push({
             originalPath: file.path,
             newPath: copyResult.path,
-            name: file.name,
+            name: smartNaming ? targetFileName : file.name,
             size: file.size,
             reason: copyResult.reason || 'already_exists'
           });
@@ -122,7 +136,7 @@ class FileService {
           results[file.type].push({
             originalPath: file.path,
             newPath: copyResult.path,
-            name: file.name,
+            name: smartNaming ? targetFileName : file.name,
             size: file.size
           });
           console.log(`  文件复制成功: ${file.name}`);

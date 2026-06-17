@@ -56,7 +56,7 @@ async function saveRepos(repos) {
 // 从存储卡导入照片（支持实时进度，使用 GET 以支持 SSE）
 router.get('/', async (req, res) => {
   try {
-    const { sourcePath, repoId } = req.query;
+    const { sourcePath, repoId, smartNaming } = req.query;
     
     if (!sourcePath) {
       // SSE 错误格式
@@ -117,7 +117,7 @@ router.get('/', async (req, res) => {
     };
     
     // 执行导入
-    const results = await fileService.importFromCard(sourcePath, progressCallback);
+    const results = await fileService.importFromCard(sourcePath, progressCallback, smartNaming === 'true');
     
     console.log('导入完成，结果:', {
       jpg: results.jpg.length,

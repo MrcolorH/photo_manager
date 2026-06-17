@@ -18,6 +18,8 @@ const ROOT = path.join(__dirname, '..');
 const FRONTEND_DIR = path.join(ROOT, 'frontend');
 const BACKEND_DIR = path.join(ROOT, 'backend');
 const RESOURCES_DIR = path.join(ROOT, 'resources');
+const YAML = loadYaml(path.join(ROOT, 'electron-builder.yml'));
+const PRODUCT_NAME = YAML.productName || 'CameraManager';
 
 function run(cmd, cwd = ROOT) {
   console.log(`\n>>> ${cmd}`);
@@ -69,6 +71,11 @@ if (!fs.existsSync(trayIconPath)) {
 
 // Step 3: 构建前端
 console.log('\n[3/5] 构建前端...');
+const frontendNodeModules = path.join(FRONTEND_DIR, 'node_modules');
+if (!fs.existsSync(frontendNodeModules)) {
+  console.log('安装前端依赖...');
+  run('npm install', FRONTEND_DIR);
+}
 try {
   run('npm run build', FRONTEND_DIR);
   console.log('✅ 前端构建完成');
@@ -90,7 +97,17 @@ if (!fs.existsSync(backendNodeModules)) {
 // Step 5: 打包 Electron 应用
 console.log('\n[5/6] 打包 Electron 应用...');
 try {
-  run('npx electron-builder --win --config electron-builder.yml', ROOT);
+  // 使用国内镜像，解决 GitHub 连接超时问题
+  const env = {
+    ...process.env,
+    ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',
+    ELECTRON_BUILDER_BINARIES_MIRROR: 'https://npmmirror.com/mirrors/electron-builder-binaries/',
+  };
+  execSync('npx electron-builder --win --config electron-builder.yml', {
+    cwd: ROOT,
+    stdio: 'inherit',
+    env,
+  });
 } catch (e) {
   console.error('❌ Electron 打包失败:', e.message);
   process.exit(1);
@@ -98,11 +115,14 @@ try {
 
 // Step 6: 清理多余构建产物，只保留安装包
 console.log('\n[6/6] 清理构建产物...');
+const pkg = require(path.join(ROOT, 'package.json'));
+const VERSION = pkg.version;
 const distDir = path.join(ROOT, 'dist-electron');
 if (fs.existsSync(distDir)) {
+  const setupExe = `${PRODUCT_NAME} Setup ${VERSION}.exe`;
   const keepFiles = new Set([
-    'CameraManager Setup 1.0.0.exe',
-    'CameraManager Setup 1.0.0.exe.blockmap',
+    setupExe,
+    setupExe + '.blockmap',
     'latest.yml'
   ]);
   for (const entry of fs.readdirSync(distDir)) {
@@ -116,7 +136,7 @@ if (fs.existsSync(distDir)) {
 
 console.log('\n========================================');
 console.log('  ✅ 构建完成!');
-console.log('  输出文件: dist-electron/CameraManager Setup 1.0.0.exe');
+console.log(`  输出文件: dist-electron/${PRODUCT_NAME} Setup ${VERSION}.exe`);
 console.log('========================================');
 
 // ============ 辅助函数 ============
@@ -175,4 +195,16 @@ function tryRequireCanvas() {
   } catch {
     return {};
   }
+}
+
+function loadYaml(filePath) {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const result = {};
+  for (const line of content.split('\n')) {
+    const match = line.match(/^(\w[\w-]*):\s*["']?(.*?)["']?\s*$/);
+    if (match && !line.startsWith('#') && !line.startsWith('-')) {
+      result[match[1]] = match[2];
+    }
+  }
+  return result;
 }
