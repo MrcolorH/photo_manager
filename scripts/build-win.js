@@ -118,8 +118,9 @@ console.log('\n[6/6] 清理构建产物...');
 const pkg = require(path.join(ROOT, 'package.json'));
 const VERSION = pkg.version;
 const distDir = path.join(ROOT, 'dist-electron');
+// NSIS artifactName 在 electron-builder.yml 中定义为 "Shiguang Capsule Setup ${version}.${ext}"
+const setupExe = `Shiguang Capsule Setup ${VERSION}.exe`;
 if (fs.existsSync(distDir)) {
-  const setupExe = `${PRODUCT_NAME} Setup ${VERSION}.exe`;
   const keepFiles = new Set([
     setupExe,
     setupExe + '.blockmap',
@@ -133,10 +134,11 @@ if (fs.existsSync(distDir)) {
     }
   }
 }
+console.log(`  保留文件: ${[...keepFiles].filter(f => fs.existsSync(path.join(distDir, f))).join(', ')}`);
 
 console.log('\n========================================');
 console.log('  ✅ 构建完成!');
-console.log(`  输出文件: dist-electron/${PRODUCT_NAME} Setup ${VERSION}.exe`);
+console.log(`  输出文件: dist-electron/Shiguang Capsule Setup ${VERSION}.exe`);
 console.log('========================================');
 
 // ============ 辅助函数 ============
