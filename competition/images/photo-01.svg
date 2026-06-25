@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg01" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a2c5a"/>
+      <stop offset="0.45" stop-color="#e8743c"/>
+      <stop offset="1" stop-color="#8b3a1f"/>
+    </linearGradient>
+    <radialGradient id="sun01" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffe9a8" stop-opacity="0.95"/>
+      <stop offset="0.5" stop-color="#ffba5c" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ffba5c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="grain01" cx="0.5" cy="0.5" r="0.8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="0.7" stop-color="#ffffff" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.22"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#bg01)"/>
+  <circle cx="200" cy="175" r="120" fill="url(#sun01)"/>
+  <circle cx="200" cy="175" r="42" fill="#ffd87a" opacity="0.85"/>
+  <rect width="400" height="300" fill="url(#grain01)"/>
+  <text x="15" y="286" font-family="Arial, sans-serif" font-size="16" fill="#1a0a00" opacity="0.7">日落黄昏</text>
+  <text x="14" y="285" font-family="Arial, sans-serif" font-size="16" fill="#ffffff" opacity="0.9">日落黄昏</text>
+</svg>

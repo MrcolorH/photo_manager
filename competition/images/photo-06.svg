@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg06" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8d4b0"/>
+      <stop offset="0.55" stop-color="#a87848"/>
+      <stop offset="1" stop-color="#4a2818"/>
+    </linearGradient>
+    <radialGradient id="plate06" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff4dc" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#fff4dc" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="grain06" cx="0.5" cy="0.5" r="0.8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="0.7" stop-color="#ffffff" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.2"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#bg06)"/>
+  <ellipse cx="200" cy="160" rx="130" ry="90" fill="url(#plate06)"/>
+  <circle cx="200" cy="160" r="45" fill="#6b3818" opacity="0.5"/>
+  <circle cx="200" cy="160" r="20" fill="#c8843c" opacity="0.7"/>
+  <rect width="400" height="300" fill="url(#grain06)"/>
+  <text x="15" y="286" font-family="Arial, sans-serif" font-size="16" fill="#1a0a00" opacity="0.7">美食静物</text>
+  <text x="14" y="285" font-family="Arial, sans-serif" font-size="16" fill="#ffffff" opacity="0.9">美食静物</text>
+</svg>

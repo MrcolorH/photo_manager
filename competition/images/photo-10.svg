@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg10" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8c878"/>
+      <stop offset="0.4" stop-color="#c8843c"/>
+      <stop offset="0.8" stop-color="#8b4a1c"/>
+      <stop offset="1" stop-color="#6b3818"/>
+    </linearGradient>
+    <radialGradient id="sun10" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff4d0" stop-opacity="0.95"/>
+      <stop offset="0.5" stop-color="#ffd97a" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#ffd97a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="grain10" cx="0.5" cy="0.5" r="0.8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="0.7" stop-color="#ffffff" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.2"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#bg10)"/>
+  <circle cx="290" cy="90" r="75" fill="url(#sun10)"/>
+  <circle cx="290" cy="90" r="30" fill="#fff4d0" opacity="0.9"/>
+  <path d="M0,210 L130,180 L260,210 L400,190 L400,300 L0,300 Z" fill="#8b4a1c" opacity="0.6"/>
+  <path d="M0,240 L160,215 L300,245 L400,225 L400,300 L0,300 Z" fill="#6b3818" opacity="0.7"/>
+  <path d="M0,270 L200,255 L400,270 L400,300 L0,300 Z" fill="#4a2810" opacity="0.75"/>
+  <rect width="400" height="300" fill="url(#grain10)"/>
+  <text x="15" y="286" font-family="Arial, sans-serif" font-size="16" fill="#1a0a00" opacity="0.7">沙漠光影</text>
+  <text x="14" y="285" font-family="Arial, sans-serif" font-size="16" fill="#ffffff" opacity="0.9">沙漠光影</text>
+</svg>

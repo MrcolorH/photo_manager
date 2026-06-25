@@ -1,0 +1,1736 @@
+<!doctype html>
+<!--
+  拾光舱 · ShíGuāng Capsule · 交互演示页面
+  ============================================================
+  基于 competition/showcase-v2.html 的视觉风格，实现四大功能页面：
+    1. 照片浏览（PhotoGallery）  2. 存储卡导入（ImportPage）
+    3. 同步删除 RAW（SyncDeletePage） 4. 仓库配置（RepoSettings）
+  - 所有后端接口使用 Mock 模拟，响应格式与真实后端 (backend/src/routes) 完全一致
+  - 真正依赖 Electron 原生能力（文件夹选择对话框、打开文件位置）的功能，提示「仅在完整项目包中可用」
+  - 占位图片存放于 images/ 目录，可随时替换为实际照片
+-->
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>拾光舱 · 交互演示 · ShíGuāng Capsule</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ============================ 主题变量 ============================ */
+    /* 暗色 · 琥珀金（与 showcase-v2.html 一致） */
+    :root,
+    [data-theme="dark"] {
+      --bg: #0d0c0b;
+      --bg-elevated: #13110f;
+      --card: #171411;
+      --card-hover: #1f1b17;
+      --border: #2a241e;
+      --border-light: #3a322a;
+      --text: #e8ddd0;
+      --text-secondary: #c4b8aa;
+      --muted: #8a7e72;
+      --accent: #d4a574;
+      --accent-light: #f4c576;
+      --accent-dark: #8b5a2b;
+      --accent-bg: rgba(212, 165, 116, 0.08);
+      --accent-border: rgba(212, 165, 116, 0.25);
+      --accent-text-on: #1a1410;
+      --gold: #d4a574;
+      --gold-light: #f4c576;
+      --gold-dark: #8b5a2b;
+      --danger: #c75050;
+      --success: #7ab87a;
+      --info: #6ba3c7;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      --scrollbar-track: #0d0c0b;
+      --scrollbar-thumb: #3a322a;
+      color-scheme: dark;
+    }
+    /* 明色 · 天空蓝（与实际项目 light 主题一致） */
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --bg-elevated: #f1f5f9;
+      --card: #ffffff;
+      --card-hover: #f8fafc;
+      --border: #e2e8f0;
+      --border-light: #cbd5e1;
+      --text: #0f172a;
+      --text-secondary: #334155;
+      --muted: #94a3b8;
+      --accent: #4a80b1;
+      --accent-light: #6ba3d6;
+      --accent-dark: #2d5f8a;
+      --accent-bg: rgba(74, 128, 177, 0.06);
+      --accent-border: rgba(74, 128, 177, 0.18);
+      --accent-text-on: #ffffff;
+      --gold: #b8884a;
+      --gold-light: #d4a574;
+      --gold-dark: #8b5a2b;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --info: #2563eb;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+      --scrollbar-track: #f1f5f9;
+      --scrollbar-thumb: #cbd5e1;
+      color-scheme: light;
+    }
+
+    /* ============================ 基础重置 ============================ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      transition: background 0.3s ease, color 0.3s ease;
+      overflow: hidden;
+    }
+    h1, h2, h3, h4 { font-family: 'Noto Serif SC', Georgia, serif; color: var(--text); font-weight: 700; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; cursor: pointer; }
+    ::selection { background: var(--accent-bg); }
+
+    /* 滚动条 */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+    ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* ============================ 整体布局 ============================ */
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* 顶栏 */
+    .app-header {
+      flex-shrink: 0;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dark));
+      box-shadow: 0 0 12px rgba(212,165,116,0.35);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; color: #1a1410;
+    }
+    .brand-name {
+      font-family: 'Noto Serif SC', serif;
+      font-size: 1.15rem; font-weight: 700; color: var(--text);
+      letter-spacing: 0.02em;
+    }
+    .brand-sub {
+      font-size: 0.62rem; letter-spacing: 0.12em; color: var(--accent);
+      padding: 2px 10px; border: 1px solid var(--accent-dark); border-radius: 999px;
+    }
+    .badge-comp {
+      font-size: 0.68rem; letter-spacing: 0.1em; color: var(--accent);
+      padding: 4px 12px; border: 1px solid var(--accent-dark); border-radius: 999px;
+    }
+    .theme-toggle {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--card); color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; transition: all 0.25s ease;
+    }
+    .theme-toggle:hover { border-color: var(--accent); background: var(--accent-bg); transform: scale(1.08); }
+
+    /* 主体：侧栏 + 内容 */
+    .app-body { flex: 1; display: flex; min-height: 0; }
+    .sidebar {
+      width: 210px; flex-shrink: 0;
+      background: var(--card); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .nav { flex: 1; padding: 12px 8px; overflow-y: auto; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; margin: 4px 0;
+      border-radius: 8px; color: var(--muted); font-size: 14px;
+      cursor: pointer; transition: all 0.2s ease; user-select: none;
+    }
+    .nav-item:hover { color: var(--text); background: var(--accent-bg); }
+    .nav-item.active { color: var(--accent); background: var(--accent-bg); font-weight: 500; }
+    .nav-item .ico { width: 16px; text-align: center; font-size: 15px; }
+
+    /* 侧栏底部存储统计 */
+    .storage-panel { border-top: 1px solid var(--border); padding: 12px; }
+    .storage-title { font-size: 12px; color: var(--muted); margin-bottom: 10px; letter-spacing: 0.05em; }
+    .stat-card {
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+    }
+    .stat-card .label { font-size: 11px; color: var(--muted); }
+    .stat-card .val { font-size: 16px; font-weight: 700; font-family: 'Noto Serif SC', serif; }
+    .stat-card .val.jpg { color: var(--success); }
+    .stat-card .val.raw { color: var(--accent); }
+    .stat-card .val.video { color: var(--text-secondary); }
+    .stat-card .suffix { font-size: 11px; color: var(--muted); margin-left: 4px; }
+
+    /* 内容区 */
+    .content {
+      flex: 1; min-width: 0; overflow-y: auto;
+      padding: 20px 28px; background: var(--bg);
+    }
+    .page { animation: fadeUp 0.35s ease; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ============================ 通用组件 ============================ */
+    /* 按钮 */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 8px; font-size: 13px;
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+      transition: all 0.2s ease; white-space: nowrap;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text-on); font-weight: 500; }
+    .btn.primary:hover { background: var(--accent-light); border-color: var(--accent-light); color: var(--accent-text-on); }
+    .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+    .btn.danger:hover { opacity: 0.88; color: #fff; }
+    .btn.lg { padding: 10px 20px; font-size: 14px; }
+    .btn.sm { padding: 4px 10px; font-size: 12px; }
+    .btn.link { background: transparent; border: none; color: var(--accent); padding: 2px 6px; }
+    .btn.link:hover { color: var(--accent-light); }
+    .btn.link.danger { color: var(--danger); }
+
+    /* 输入框 / 选择框 */
+    .input, .select {
+      padding: 7px 12px; border-radius: 8px; font-size: 13px; font-family: inherit;
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+      transition: border-color 0.2s ease; outline: none;
+    }
+    .input:focus, .select:focus { border-color: var(--accent); }
+    .input::placeholder { color: var(--muted); }
+    .select { cursor: pointer; appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                        linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position: calc(100% - 14px) center, calc(100% - 9px) center;
+      background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+      padding-right: 28px;
+    }
+    .input-group { display: flex; align-items: stretch; }
+    .input-group .input { flex: 1; border-radius: 8px 0 0 8px; }
+    .input-group .btn { border-radius: 0 8px 8px 0; border-left: none; }
+    .form-label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary); }
+    .form-hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    /* 卡片 */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px;
+    }
+    .card + .card { margin-top: 16px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+    .card-title { font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .page-title { font-family: 'Noto Serif SC', serif; font-size: 20px; margin-bottom: 16px; }
+
+    /* 标签 */
+    .tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; padding: 2px 8px; border-radius: 4px;
+      background: var(--bg-elevated); border: 1px solid var(--border); color: var(--muted);
+    }
+    .tag.blue { background: rgba(74,128,177,0.12); border-color: rgba(74,128,177,0.3); color: var(--info); }
+    .tag.orange { background: rgba(212,165,116,0.12); border-color: var(--accent-border); color: var(--accent); }
+    .tag.green { background: rgba(122,184,122,0.12); border-color: rgba(122,184,122,0.3); color: var(--success); }
+    .tag.red { background: rgba(199,80,80,0.12); border-color: rgba(199,80,80,0.3); color: var(--danger); }
+    .tag.lg { font-size: 13px; padding: 4px 10px; }
+
+    /* 提示条 Alert */
+    .alert {
+      display: flex; gap: 10px; padding: 12px 16px; border-radius: 8px;
+      background: var(--card); border: 1px solid var(--border); margin-bottom: 16px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .alert .ico { flex-shrink: 0; font-size: 16px; line-height: 1.6; }
+    .alert .title { font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .alert .desc { color: var(--muted); font-size: 12px; }
+    .alert.info { border-color: rgba(107,163,199,0.3); }
+    .alert.info .ico { color: var(--info); }
+    .alert.success { border-color: rgba(122,184,122,0.3); }
+    .alert.success .ico { color: var(--success); }
+    .alert.warning { border-color: rgba(212,165,116,0.3); }
+    .alert.warning .ico { color: var(--accent); }
+    .alert.error { border-color: rgba(199,80,80,0.3); }
+    .alert.error .ico { color: var(--danger); }
+
+    /* 工具栏 */
+    .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 14px; }
+    .toolbar-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    /* 统计行 */
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+    .stat-box {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px;
+    }
+    .stat-box .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .stat-box .num { font-size: 24px; font-weight: 700; font-family: 'Noto Serif SC', serif; color: var(--text); }
+    .stat-box .num.success { color: var(--success); }
+    .stat-box .num.accent { color: var(--accent); }
+
+    /* ============================ 照片网格 ============================ */
+    .photo-grid {
+      display: grid; gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    .photo-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      overflow: hidden; display: flex; flex-direction: column;
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+      position: relative;
+    }
+    .photo-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: var(--accent-border); }
+    .photo-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .photo-cover {
+      position: relative; height: 130px; cursor: pointer; overflow: hidden; background: var(--bg-elevated);
+    }
+    .photo-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s ease; }
+    .photo-card:hover .photo-cover img { transform: scale(1.06); }
+    .photo-cover .play-icon {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 38px; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.6); pointer-events: none;
+    }
+    .photo-cover .type-badge {
+      position: absolute; top: 6px; right: 6px;
+      font-size: 10px; padding: 1px 6px; border-radius: 4px;
+      background: rgba(0,0,0,0.55); color: #fff; backdrop-filter: blur(4px);
+    }
+    .photo-check {
+      position: absolute; top: 6px; left: 6px; z-index: 2;
+      width: 18px; height: 18px; cursor: pointer;
+      accent-color: var(--accent);
+    }
+    .photo-meta { padding: 8px 10px; flex: 1; }
+    .photo-meta .name {
+      font-size: 12px; color: var(--text-secondary); font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .photo-meta .info { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+    .photo-actions {
+      display: flex; justify-content: space-around; padding: 6px 0;
+      border-top: 1px solid var(--border); background: var(--bg-elevated);
+    }
+    .photo-actions .act {
+      flex: 1; text-align: center; font-size: 15px; color: var(--muted);
+      cursor: pointer; padding: 4px 0; transition: color 0.2s ease; position: relative;
+    }
+    .photo-actions .act:hover { color: var(--accent); }
+    .photo-actions .act.del:hover { color: var(--danger); }
+
+    /* 下拉菜单 */
+    .dropdown-menu {
+      position: absolute; top: 100%; left: 50%; transform: translateX(-50%) translateY(4px);
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: var(--shadow); padding: 4px; z-index: 50; min-width: 130px;
+      display: none;
+    }
+    .dropdown.open .dropdown-menu { display: block; }
+    .dropdown-menu .item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; font-size: 12px; color: var(--text); border-radius: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .dropdown-menu .item:hover { background: var(--accent-bg); color: var(--accent); }
+
+    /* ============================ 分页 ============================ */
+    .pagination {
+      display: flex; align-items: center; gap: 6px; justify-content: flex-end;
+      padding-top: 16px; border-top: 1px solid var(--border); margin-top: 16px; flex-wrap: wrap;
+    }
+    .pg-btn {
+      min-width: 30px; height: 30px; padding: 0 8px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted);
+      font-size: 13px; display: inline-flex; align-items: center; justify-content: center;
+      transition: all 0.2s ease;
+    }
+    .pg-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pg-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); font-weight: 600; }
+    .pg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pg-size { font-size: 12px; color: var(--muted); margin-left: 8px; }
+    .pg-jump { width: 54px; text-align: center; }
+    .pg-total { font-size: 12px; color: var(--muted); margin-right: auto; }
+
+    /* 空状态 / 加载 */
+    .empty { text-align: center; padding: 80px 20px; color: var(--muted); }
+    .empty .ico { font-size: 52px; opacity: 0.5; margin-bottom: 12px; }
+    .spinner {
+      width: 36px; height: 36px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 80px auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { text-align: center; color: var(--muted); font-size: 13px; }
+
+    /* ============================ 步骤条 ============================ */
+    .steps { display: flex; gap: 0; margin-bottom: 20px; }
+    .step { flex: 1; display: flex; align-items: flex-start; gap: 10px; position: relative; }
+    .step:not(:last-child)::after {
+      content: ''; position: absolute; top: 14px; left: 32px; right: 0; height: 2px;
+      background: var(--border);
+    }
+    .step.done:not(:last-child)::after { background: var(--success); }
+    .step .dot {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 13px;
+      background: var(--card); border: 2px solid var(--border); color: var(--muted); z-index: 1;
+      transition: all 0.3s ease;
+    }
+    .step.done .dot { background: var(--success); border-color: var(--success); color: #fff; }
+    .step.active .dot { background: var(--accent); border-color: var(--accent); color: var(--accent-text-on); }
+    .step .txt .t { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+    .step.active .txt .t { color: var(--accent); }
+    .step .txt .d { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* 进度条 */
+    .progress-track { height: 10px; background: var(--bg-elevated); border-radius: 6px; overflow: hidden; }
+    .progress-fill {
+      height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-light));
+      border-radius: 6px; transition: width 0.4s ease; width: 0;
+    }
+    .progress-fill.active { animation: shimmer 1.5s linear infinite; }
+    @keyframes shimmer { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
+
+    /* 开关 Switch */
+    .switch { position: relative; display: inline-block; width: 38px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider {
+      position: absolute; cursor: pointer; inset: 0; background: var(--border-light);
+      border-radius: 20px; transition: 0.25s;
+    }
+    .switch .slider::before {
+      content: ''; position: absolute; height: 14px; width: 14px; left: 3px; top: 3px;
+      background: #fff; border-radius: 50%; transition: 0.25s;
+    }
+    .switch input:checked + .slider { background: var(--accent); }
+    .switch input:checked + .slider::before { transform: translateX(18px); }
+
+    /* 复选框 */
+    .checkbox { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; vertical-align: middle; }
+
+    /* ============================ 表格 ============================ */
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table th, .table td { padding: 12px 14px; text-align: left; }
+    .table thead th { background: var(--bg-elevated); color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--border); }
+    .table tbody td { border-bottom: 1px solid var(--border); color: var(--text); }
+    .table tbody tr { transition: background 0.2s ease; }
+    .table tbody tr:hover { background: var(--accent-bg); }
+    .table .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); }
+
+    /* ============================ 列表（孤立 RAW） ============================ */
+    .orphan-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .orphan-item {
+      display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+      border-bottom: 1px solid var(--border); transition: background 0.2s ease;
+    }
+    .orphan-item:last-child { border-bottom: none; }
+    .orphan-item:hover { background: var(--accent-bg); }
+    .orphan-thumb {
+      width: 64px; height: 48px; border-radius: 6px; overflow: hidden;
+      background: var(--bg-elevated); flex-shrink: 0; cursor: pointer;
+    }
+    .orphan-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .orphan-meta { flex: 1; min-width: 0; }
+    .orphan-meta .name { font-size: 13px; color: var(--accent); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .orphan-meta .path { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ============================ 模态框 ============================ */
+    .modal-mask {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55); backdrop-filter: blur(2px);
+      display: flex; align-items: center; justify-content: center; z-index: 1000;
+      animation: fadeIn 0.2s ease; padding: 20px;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.4); animation: popIn 0.25s ease;
+    }
+    @keyframes popIn { from { opacity: 0; transform: scale(0.95) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .modal-head .title { font-size: 16px; font-weight: 700; font-family: 'Noto Serif SC', serif; }
+    .modal-close { width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; color: var(--muted); font-size: 18px; }
+    .modal-close:hover { background: var(--accent-bg); color: var(--text); }
+    .modal-body { padding: 20px; }
+    .modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+
+    /* ============================ 图片预览（灯箱） ============================ */
+    .lightbox {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 1100;
+      display: flex; align-items: center; justify-content: center; animation: fadeIn 0.2s ease;
+    }
+    .lb-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 60px 80px; }
+    .lb-img { max-width: 100%; max-height: 100%; transition: transform 0.3s ease; user-select: none; }
+    .lb-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 48px; height: 48px; border-radius: 50%; border: none;
+      background: rgba(255,255,255,0.12); color: #fff; font-size: 24px;
+      display: flex; align-items: center; justify-content: center; transition: background 0.2s ease;
+    }
+    .lb-nav:hover { background: rgba(255,255,255,0.25); }
+    .lb-nav.prev { left: 24px; }
+    .lb-nav.next { right: 24px; }
+    .lb-close {
+      position: absolute; top: 20px; right: 24px; width: 40px; height: 40px;
+      border-radius: 50%; border: none; background: rgba(255,255,255,0.12); color: #fff; font-size: 20px;
+    }
+    .lb-close:hover { background: rgba(255,255,255,0.25); }
+    .lb-toolbar {
+      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 6px; padding: 6px; background: rgba(0,0,0,0.5);
+      border-radius: 10px; backdrop-filter: blur(8px);
+    }
+    .lb-btn { width: 38px; height: 38px; border-radius: 8px; border: none; background: transparent; color: #fff; font-size: 18px; }
+    .lb-btn:hover { background: rgba(255,255,255,0.15); }
+    .lb-btn.del:hover { background: rgba(199,80,80,0.4); }
+    .lb-info { position: absolute; top: 24px; left: 24px; color: rgba(255,255,255,0.85); font-size: 13px; }
+
+    /* ============================ Toast ============================ */
+    #toast-root { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; }
+    .toast {
+      display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 10px;
+      background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow);
+      font-size: 13px; color: var(--text); animation: toastIn 0.3s ease; max-width: 90vw;
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+    .toast.success { border-color: var(--success); }
+    .toast.success .ico { color: var(--success); }
+    .toast.error { border-color: var(--danger); }
+    .toast.error .ico { color: var(--danger); }
+    .toast.warning { border-color: var(--accent); }
+    .toast.warning .ico { color: var(--accent); }
+    .toast.info .ico { color: var(--info); }
+
+    /* ============================ 响应式 ============================ */
+    @media (max-width: 900px) {
+      .sidebar { width: 64px; }
+      .nav-item .label, .brand-sub, .storage-panel { display: none; }
+      .nav-item { justify-content: center; }
+      .stat-row { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .app-header { padding: 0 14px; }
+      .content { padding: 14px; }
+      .badge-comp { display: none; }
+      .photo-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+      .photo-cover { height: 110px; }
+      .toolbar { gap: 8px; }
+      .toolbar-group .select { width: 100%; }
+      .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .modal { max-width: 100%; }
+      .lb-img-wrap { padding: 60px 20px; }
+    }
+    @media (max-width: 480px) {
+      .photo-grid { grid-template-columns: repeat(2, 1fr); }
+      .storage-panel { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部导航 -->
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">📷</span>
+        <span class="brand-name">拾光舱</span>
+        <span class="brand-sub">ShíGuāng</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="badge-comp">交互演示 · Electron 桌面应用</span>
+        <button class="theme-toggle" id="themeToggle" title="切换主题">☀</button>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <!-- 侧栏 -->
+      <aside class="sidebar">
+        <nav class="nav" id="nav"></nav>
+        <div class="storage-panel" id="storagePanel"></div>
+      </aside>
+
+      <!-- 内容区 -->
+      <main class="content" id="content"></main>
+    </div>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+
+  <script>
+  /* ====================================================================
+   * 拾光舱 · 交互演示 · 应用脚本
+   * 结构：① Mock 数据 → ② Mock API → ③ 工具函数 → ④ 页面渲染器 → ⑤ 路由 & 初始化
+   * ==================================================================== */
+
+  /* ============ ① Mock 数据 ============ */
+
+  // 占位图（images 目录，可随时替换为真实照片）
+  const IMG = {
+    jpg: Array.from({ length: 12 }, (_, i) => `images/photo-${String(i + 1).padStart(2, '0')}.svg`),
+    raw: 'images/raw-placeholder.svg',
+    video: 'images/video-placeholder.svg'
+  };
+
+  // 真实仓库名场景词
+  const SCENES = ['日落', '人像', '街拍', '风光', '建筑', '美食', '夜景', '旅拍', '森林', '沙漠', '雨景', '雪景'];
+
+  // 仓库列表（与 backend/data/repos.json 完全一致）
+  let REPOS = [
+    { id: '1776333706008', name: '索尼', path: '/Users/colorh/Pictures/索尼大法佬/', isDefault: false },
+    { id: '1776403173426', name: '硬盘', path: '/Volumes/EXP/相机存档/', isDefault: false },
+    { id: '1776418196306', name: 'fuji', path: '/Users/colorh/Pictures/富士/', isDefault: true }
+  ];
+
+  // 各仓库各类型文件数量（模拟不同仓库素材量）
+  const REPO_COUNTS = {
+    '1776333706008': { jpg: 86, raw: 64, video: 4 },   // 索尼
+    '1776403173426': { jpg: 142, raw: 110, video: 9 }, // 硬盘
+    '1776418196306': { jpg: 48, raw: 36, video: 2 }    // fuji
+  };
+
+  // 生成确定性 mock 照片列表（保证分页切换数据稳定）
+  function genPhotos(repoId, category, page, pageSize, sortBy, sortOrder) {
+    const repo = REPOS.find(r => r.id === repoId);
+    const repoPath = repo ? repo.path : '/Users/colorh/Pictures/';
+    const counts = REPO_COUNTS[repoId] || { jpg: 50, raw: 30, video: 3 };
+    const total = counts[category] || 0;
+
+    const all = [];
+    const extMap = { jpg: ['.jpg', '.JPG'], raw: ['.ARW', '.CR2', '.NEF', '.RAF'], video: ['.MP4', '.MOV'] };
+    const prefixMap = { jpg: 'DSC', raw: 'DSC', video: 'MVI' };
+    // 基础时间锚点（确保可复现）
+    const baseTime = new Date('2026-06-20T09:00:00').getTime();
+
+    for (let i = 0; i < total; i++) {
+      const idx = i + 1;
+      const ext = extMap[category][i % extMap[category].length];
+      const name = `${prefixMap[category]}${String(idx).padStart(5, '0')}${ext}`;
+      const sceneIdx = i % SCENES.length;
+      const sizeBase = category === 'video' ? 80000000 : category === 'raw' ? 24000000 : 6000000;
+      const size = Math.round(sizeBase * (0.4 + ((i * 7) % 100) / 100));
+      const modifiedTime = new Date(baseTime - idx * 3600 * 1000 * 6.5).toISOString();
+      const thumb = category === 'jpg' ? IMG.jpg[sceneIdx]
+                  : category === 'raw' ? IMG.raw
+                  : IMG.video;
+      all.push({
+        id: btoa(`${repoId}/${category}/${name}`),                 // base64 ID（与真实后端一致）
+        name,
+        filename: name.replace(ext, ''),
+        path: `${repoPath}${category}/${name}`,
+        relativePath: `${category}/${name}`,
+        type: category,
+        extension: ext.toLowerCase(),
+        size,
+        modifiedTime,
+        thumbnailUrl: thumb,
+        url: thumb
+      });
+    }
+
+    // 排序
+    all.sort((a, b) => {
+      let c = 0;
+      if (sortBy === 'name') c = a.name.localeCompare(b.name);
+      else if (sortBy === 'size') c = a.size - b.size;
+      else c = new Date(a.modifiedTime) - new Date(b.modifiedTime);
+      return sortOrder === 'desc' ? -c : c;
+    });
+
+    const start = (page - 1) * pageSize;
+    return { photos: all.slice(start, start + pageSize), total, page, pageSize };
+  }
+
+  // 生成孤立 RAW 文件（约 30% 的 RAW 无对应 JPG）
+  function genOrphanRaws(repoId) {
+    const repo = REPOS.find(r => r.id === repoId);
+    const repoPath = repo ? repo.path : '/Users/colorh/Pictures/';
+    const counts = REPO_COUNTS[repoId] || { raw: 30 };
+    const orphanCount = Math.max(3, Math.floor(counts.raw * 0.22));
+    const exts = ['.ARW', '.CR2', '.NEF', '.RAF'];
+    const baseTime = new Date('2026-05-15T14:00:00').getTime();
+    const list = [];
+    for (let i = 0; i < orphanCount; i++) {
+      const idx = 1000 + i * 3;
+      const ext = exts[i % exts.length];
+      const name = `DSC${String(idx).padStart(5, '0')}${ext}`;
+      const size = Math.round(24000000 * (0.5 + ((i * 11) % 100) / 100));
+      list.push({
+        id: btoa(`${repoId}/raw/orphan/${name}`),
+        name,
+        path: `${repoPath}raw/${name}`,
+        type: 'raw',
+        extension: ext.toLowerCase(),
+        size,
+        modifiedTime: new Date(baseTime - idx * 3600 * 1000 * 2).toISOString(),
+        thumbnailUrl: IMG.raw
+      });
+    }
+    return list;
+  }
+
+  // 生成存储统计信息
+  function genStorageInfo(repoId) {
+    const counts = REPO_COUNTS[repoId] || { jpg: 50, raw: 30, video: 3 };
+    const avgSize = { jpg: 5.2, raw: 23.4, video: 78.5 }; // MB
+    const info = {};
+    for (const k of ['jpg', 'raw', 'video']) {
+      const size = Math.round(counts[k] * avgSize[k] * 1024 * 1024);
+      info[k] = { count: counts[k], size, sizeFormatted: formatSize(size) };
+    }
+    return info;
+  }
+
+  /* ============ ② Mock API（响应格式与真实后端完全一致） ============
+   * 真实后端约定：所有响应统一为 { success: boolean, data?: any, error?: string }
+   * 照片对象字段：id/name/filename/path/relativePath/type/extension/size/modifiedTime/thumbnailUrl/url
+   */
+  const mockApi = {
+    // 照片相关
+    getPhotos: (category, params) => delay({ success: true, data: genPhotos(params.repoId, category, params.page, params.pageSize, params.sortBy, params.sortOrder) }),
+    getStorageInfo: (repoId) => delay({ success: true, data: genStorageInfo(repoId) }),
+    getOrphanRaws: (repoId) => delay({ success: true, data: genOrphanRaws(repoId) }),
+    deletePhoto: (id, syncRaw, repoId) => delay({ success: true, data: { success: true, deletedFiles: [id] } }, 400),
+    batchDeleteRaws: (fileIds, repoId) => delay({ success: true, data: { success: fileIds, failed: [] } }, 600),
+    batchExport: (fileIds, targetPath, repoId) => delay({
+      success: true,
+      data: { successCount: fileIds.length, failedCount: 0, skippedCount: 0, details: { success: fileIds, failed: [], skipped: [] } }
+    }, 800),
+    // 导入相关
+    importFromCard: (sourcePath, repoId, smartNaming, onProgress) => simulateImport(sourcePath, repoId, smartNaming, onProgress),
+    getDefaultPath: () => delay({ success: true, data: { defaultPath: '/Volumes' } }),
+    getRepos: () => delay({ success: true, data: REPOS }),
+    addRepo: (data) => {
+      const newRepo = { id: Date.now().toString(), name: data.name, path: data.path, isDefault: data.isDefault || REPOS.length === 0 };
+      if (newRepo.isDefault) REPOS.forEach(r => r.isDefault = false);
+      REPOS.push(newRepo);
+      return delay({ success: true, data: newRepo });
+    },
+    deleteRepo: (id) => {
+      REPOS = REPOS.filter(r => r.id !== id);
+      if (REPOS.length && !REPOS.some(r => r.isDefault)) REPOS[0].isDefault = true;
+      return delay({ success: true, message: '删除成功' });
+    },
+    setDefaultRepo: (id) => {
+      REPOS.forEach(r => r.isDefault = (r.id === id));
+      return delay({ success: true, message: '设置成功' });
+    },
+    // 依赖 Electron 原生能力 —— 演示中不可用
+    selectFolder: () => Promise.resolve({ success: false, error: '此功能依赖 Electron 原生对话框，仅在完整项目包中可用' }),
+    openLocation: () => Promise.resolve({ success: false, error: '此功能依赖系统 Shell 调用，仅在完整项目包中可用' })
+  };
+
+  // 模拟网络延迟
+  function delay(data, ms = 280) { return new Promise(res => setTimeout(() => res(data), ms)); }
+
+  // 模拟 SSE 导入流程（真实后端使用 EventSource 推送 progress / complete）
+  function simulateImport(sourcePath, repoId, smartNaming, onProgress) {
+    return new Promise(resolve => {
+      const total = 18;                                   // 模拟文件总数
+      let processed = 0;
+      const start = Date.now();
+      // 初始扫描进度
+      onProgress({ total: 0, processed: 0, remaining: 0, currentFile: '正在扫描存储卡...', estimatedTimeRemaining: 0, percentage: 0 });
+      setTimeout(() => {
+        onProgress({ total, processed: 0, remaining: total, currentFile: '准备开始...', estimatedTimeRemaining: 0, percentage: 0 });
+        const tick = () => {
+          if (processed >= total) {
+            // 完成结果（与真实后端 complete 消息一致）
+            resolve({ success: true, data: {
+              jpgCount: 9, rawCount: 7, videoCount: 2, errorCount: 0, skippedCount: 1,
+              targetRepo: (REPOS.find(r => r.id === repoId) || {}).name || '默认仓库',
+              details: { jpg: [], raw: [], video: [], errors: [], skipped: [{ name: 'DSC00001.JPG', reason: 'already_exists' }] }
+            }});
+            return;
+          }
+          processed++;
+          const elapsed = (Date.now() - start) / 1000;
+          const eta = Math.round((elapsed / processed) * (total - processed));
+          onProgress({
+            total, processed, remaining: total - processed,
+            currentFile: `DSC${String(processed).padStart(5, '0')}.${processed % 3 === 0 ? 'ARW' : processed % 5 === 0 ? 'MP4' : 'JPG'}`,
+            estimatedTimeRemaining: eta, percentage: Math.round((processed / total) * 100)
+          });
+          setTimeout(tick, 280);
+        };
+        setTimeout(tick, 400);
+      }, 600);
+    });
+  }
+
+  /* ============ ③ 工具函数 ============ */
+  function formatSize(bytes) {
+    if (!bytes) return '0 B';
+    const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+  function formatDate(d) {
+    const dt = new Date(d);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  /* ---- Toast ---- */
+  function toast(msg, type = 'info', duration = 2400) {
+    const root = document.getElementById('toast-root');
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    const icons = { success: '✓', error: '✕', warning: '!', info: 'i' };
+    el.innerHTML = `<span class="ico" style="font-weight:700;">${icons[type] || 'i'}</span><span>${escapeHtml(msg)}</span>`;
+    root.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(-8px)'; el.style.transition = 'all .25s'; setTimeout(() => el.remove(), 260); }, duration);
+  }
+
+  /* ---- 模态框 ---- */
+  function openModal({ title, body, foot, width }) {
+    const root = document.getElementById('modal-root');
+    const mask = document.createElement('div');
+    mask.className = 'modal-mask';
+    mask.innerHTML = `
+      <div class="modal" style="${width ? 'max-width:' + width + 'px' : ''}">
+        <div class="modal-head">
+          <div class="title">${escapeHtml(title)}</div>
+          <button class="modal-close">×</button>
+        </div>
+        <div class="modal-body">${body}</div>
+        ${foot ? `<div class="modal-foot">${foot}</div>` : ''}
+      </div>`;
+    root.appendChild(mask);
+    const close = () => { mask.style.animation = 'fadeIn .2s reverse'; setTimeout(() => mask.remove(), 180); };
+    mask.querySelector('.modal-close').onclick = close;
+    mask.addEventListener('click', e => { if (e.target === mask) close(); });
+    return { mask, close, root: mask.querySelector('.modal-body') };
+  }
+  function confirmModal({ title, content, okText = '确认', okType = 'primary', onOk }) {
+    const foot = `<button class="btn" data-act="cancel">取消</button><button class="btn ${okType === 'danger' ? 'danger' : 'primary'}" data-act="ok">${escapeHtml(okText)}</button>`;
+    const { mask, close } = openModal({ title, body: content, foot });
+    mask.querySelector('[data-act="cancel"]').onclick = close;
+    mask.querySelector('[data-act="ok"]').onclick = async () => {
+      close();
+      await onOk();
+    };
+  }
+
+  // 依赖原生能力的功能提示
+  function nativeUnavailable(feature) {
+    toast(`${feature || '该功能'}依赖 Electron 原生能力，仅在完整项目包中可用`, 'warning', 3200);
+  }
+
+  /* ============ ④ 全局状态 ============ */
+  const state = {
+    route: 'gallery',
+    selectedRepoId: REPOS.find(r => r.isDefault)?.id || REPOS[0].id,
+    storageInfo: { jpg: {}, raw: {}, video: {} },
+    // 照片浏览
+    gallery: { category: 'jpg', sortBy: 'modifiedTime', sortOrder: 'desc', page: 1, pageSize: 36, photos: [], total: 0, loading: false, selected: [], selectAll: false, cachedAll: [] }
+  };
+
+  /* ============ 侧栏 + 顶部统计 ============ */
+  const NAV = [
+    { key: 'gallery', icon: '🖼', label: '照片浏览' },
+    { key: 'import', icon: '⤓', label: '存储卡导入' },
+    { key: 'sync-delete', icon: '🗑', label: '同步删除 RAW' },
+    { key: 'settings', icon: '⚙', label: '仓库配置' }
+  ];
+
+  function renderNav() {
+    const nav = document.getElementById('nav');
+    nav.innerHTML = NAV.map(n => `
+      <div class="nav-item ${state.route === n.key ? 'active' : ''}" data-route="${n.key}">
+        <span class="ico">${n.icon}</span><span class="label">${n.label}</span>
+      </div>`).join('');
+    nav.querySelectorAll('.nav-item').forEach(el => el.onclick = () => go(el.dataset.route));
+  }
+
+  async function refreshStorage() {
+    const res = await mockApi.getStorageInfo(state.selectedRepoId);
+    if (res.success) {
+      state.storageInfo = res.data;
+      renderStoragePanel();
+    }
+  }
+  function renderStoragePanel() {
+    const i = state.storageInfo;
+    const box = (label, val, size, cls) => `
+      <div class="stat-card">
+        <div class="label">${label}</div>
+        <div class="val ${cls}">${val}<span class="suffix">${size}</span></div>
+      </div>`;
+    document.getElementById('storagePanel').innerHTML = `
+      <div class="storage-title">存储统计</div>
+      ${box('JPG 照片', i.jpg.count || 0, `(${i.jpg.sizeFormatted || '0 B'})`, 'jpg')}
+      ${box('RAW 底片', i.raw.count || 0, `(${i.raw.sizeFormatted || '0 B'})`, 'raw')}
+      ${box('视频文件', i.video.count || 0, `(${i.video.sizeFormatted || '0 B'})`, 'video')}
+    `;
+  }
+
+  /* ============ 仓库选择器（共享组件） ============ */
+  function repoSelectHTML(selectedId, attrs = '') {
+    return `<select class="select" data-repo-select ${attrs} style="min-width:160px;">
+      ${REPOS.map(r => `<option value="${r.id}" ${r.id === selectedId ? 'selected' : ''}>${escapeHtml(r.name)}${r.isDefault ? '（默认）' : ''}</option>`).join('')}
+    </select>`;
+  }
+  function bindRepoSelect(container, onChange) {
+    const sel = container.querySelector('[data-repo-select]');
+    if (sel) sel.onchange = (e) => onChange(e.target.value);
+  }
+
+  /* ============ 页面：照片浏览 ============ */
+  async function renderGallery() {
+    const c = document.getElementById('content');
+    c.innerHTML = `
+      <div class="page">
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <span style="color:var(--muted);font-size:13px;">🔍</span>
+            ${repoSelectHTML(state.selectedRepoId)}
+            <select class="select" id="gCategory">
+              <option value="jpg" ${state.gallery.category === 'jpg' ? 'selected' : ''}>JPG 照片</option>
+              <option value="raw" ${state.gallery.category === 'raw' ? 'selected' : ''}>RAW 底片</option>
+              <option value="video" ${state.gallery.category === 'video' ? 'selected' : ''}>视频文件</option>
+            </select>
+            <select class="select" id="gSortBy">
+              <option value="modifiedTime" ${state.gallery.sortBy === 'modifiedTime' ? 'selected' : ''}>修改时间</option>
+              <option value="name" ${state.gallery.sortBy === 'name' ? 'selected' : ''}>文件名</option>
+              <option value="size" ${state.gallery.sortBy === 'size' ? 'selected' : ''}>文件大小</option>
+            </select>
+            <select class="select" id="gSortOrder">
+              <option value="desc" ${state.gallery.sortOrder === 'desc' ? 'selected' : ''}>降序</option>
+              <option value="asc" ${state.gallery.sortOrder === 'asc' ? 'selected' : ''}>升序</option>
+            </select>
+          </div>
+          <div class="toolbar-group">
+            <span id="gTotal" style="color:var(--muted);font-size:13px;">共 0 张</span>
+            <span id="gSelectedTag" class="tag blue lg" style="display:none;">已选中 0 张</span>
+            <button class="btn" id="gRefresh">↻ 刷新</button>
+          </div>
+        </div>
+
+        <div class="toolbar" id="gBatchBar" style="display:none;padding:8px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;justify-content:flex-start;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);">
+            <input type="checkbox" class="checkbox" id="gSelectAll"> 全选
+          </label>
+          <button class="btn primary" id="gExport">⤓ 导出选中 (<span id="gExpCnt">0</span>)</button>
+          <button class="btn danger" id="gBatchDel">🗑 删除选中 (<span id="gDelCnt">0</span>)</button>
+          <button class="btn" id="gClearSel">✕ 取消选择</button>
+        </div>
+
+        <div id="gGridWrap">
+          <div class="spinner"></div>
+          <div class="loading-text">正在加载照片...</div>
+        </div>
+        <div id="gPager"></div>
+      </div>`;
+
+    // 绑定筛选
+    bindRepoSelect(c, async (id) => { state.selectedRepoId = id; state.gallery.page = 1; await refreshStorage(); await fetchGallery(); });
+    c.querySelector('#gCategory').onchange = e => { state.gallery.category = e.target.value; state.gallery.page = 1; state.gallery.selected = []; fetchGallery(); };
+    c.querySelector('#gSortBy').onchange = e => { state.gallery.sortBy = e.target.value; state.gallery.page = 1; fetchGallery(); };
+    c.querySelector('#gSortOrder').onchange = e => { state.gallery.sortOrder = e.target.value; state.gallery.page = 1; fetchGallery(); };
+    c.querySelector('#gRefresh').onclick = () => { state.gallery.selected = []; fetchGallery(); };
+    c.querySelector('#gSelectAll').onchange = e => {
+      state.gallery.selectAll = e.target.checked;
+      state.gallery.selected = e.target.checked ? state.gallery.photos.map(p => p.id) : [];
+      updateGallerySelectionUI();
+    };
+    c.querySelector('#gExport').onclick = openExportModal;
+    c.querySelector('#gBatchDel').onclick = openBatchDelete;
+    c.querySelector('#gClearSel').onclick = () => { state.gallery.selected = []; state.gallery.selectAll = false; updateGallerySelectionUI(); };
+
+    await fetchGallery();
+  }
+
+  async function fetchGallery() {
+    const g = state.gallery;
+    g.loading = true;
+    const wrap = document.getElementById('gGridWrap');
+    if (wrap) wrap.innerHTML = `<div class="spinner"></div><div class="loading-text">正在加载照片...</div>`;
+    const res = await mockApi.getPhotos(g.category, { page: g.page, pageSize: g.pageSize, sortBy: g.sortBy, sortOrder: g.sortOrder, repoId: state.selectedRepoId });
+    g.loading = false;
+    if (res.success) {
+      g.photos = res.data.photos;
+      g.total = res.data.total;
+      // 过滤掉已删除的选中项
+      g.selected = g.selected.filter(id => g.photos.some(p => p.id === id));
+      g.selectAll = g.photos.length > 0 && g.photos.every(p => g.selected.includes(p.id));
+    }
+    renderGalleryGrid();
+    renderGalleryPager();
+    updateGallerySelectionUI();
+    document.getElementById('gTotal').textContent = `共 ${g.total} 张`;
+    document.getElementById('gBatchBar').style.display = g.photos.length ? 'flex' : 'none';
+    const sa = document.getElementById('gSelectAll'); if (sa) sa.checked = g.selectAll;
+  }
+
+  function renderGalleryGrid() {
+    const g = state.gallery;
+    const wrap = document.getElementById('gGridWrap');
+    if (!g.photos.length) {
+      wrap.innerHTML = `<div class="empty"><div class="ico">📭</div><div>暂无照片</div><div style="font-size:12px;margin-top:6px;">当前仓库未发现 ${g.category.toUpperCase()} 文件</div></div>`;
+      return;
+    }
+    const catLabel = g.category === 'jpg' ? 'JPG' : g.category === 'raw' ? 'RAW' : 'MP4';
+    wrap.innerHTML = `<div class="photo-grid">${g.photos.map(p => photoCardHTML(p, catLabel)).join('')}</div>`;
+    // 绑定事件
+    wrap.querySelectorAll('.photo-card').forEach(card => {
+      const id = card.dataset.id;
+      const chk = card.querySelector('.photo-check');
+      // 阻止勾选事件冒泡到封面的点击（避免触发预览）
+      chk.onclick = e => e.stopPropagation();
+      chk.onchange = e => {
+        if (e.target.checked) { if (!state.gallery.selected.includes(id)) state.gallery.selected.push(id); }
+        else { state.gallery.selected = state.gallery.selected.filter(x => x !== id); }
+        state.gallery.selectAll = state.gallery.photos.length > 0 && state.gallery.photos.every(p => state.gallery.selected.includes(p.id));
+        const sa = document.getElementById('gSelectAll'); if (sa) sa.checked = state.gallery.selectAll;
+        updateGallerySelectionUI();
+      };
+      card.querySelector('.photo-cover').onclick = () => {
+        if (g.category === 'video' || g.category === 'raw') {
+          nativeUnavailable('在系统播放器/查看器中打开此文件');
+          return;
+        }
+        openLightbox(id);
+      };
+      // 操作：打开位置（下拉）
+      const dd = card.querySelector('.dropdown');
+      if (dd) {
+        const trigger = dd.querySelector('.act.loc');
+        trigger.onclick = (e) => { e.stopPropagation(); dd.classList.toggle('open'); };
+        dd.querySelectorAll('.item').forEach(it => {
+          it.onclick = (e) => { e.stopPropagation(); dd.classList.remove('open'); nativeUnavailable('打开文件位置'); };
+        });
+      }
+      const prev = card.querySelector('.act.prev');
+      if (prev) prev.onclick = () => {
+        if (g.category === 'raw' || g.category === 'video') { nativeUnavailable('打开此文件'); return; }
+        openLightbox(id);
+      };
+      card.querySelector('.act.del').onclick = () => openDeleteModal(id);
+    });
+    // 点击外部关闭下拉
+    document.addEventListener('click', closeDropdowns, { once: true });
+  }
+
+  function closeDropdowns() { document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open')); }
+
+  function photoCardHTML(p, catLabel) {
+    const checked = state.gallery.selected.includes(p.id) ? 'checked' : '';
+    const selected = state.gallery.selected.includes(p.id) ? 'selected' : '';
+    const play = p.type === 'video' ? '<div class="play-icon">▶</div>' : '';
+    const isRaw = p.type === 'raw';
+    return `
+      <div class="photo-card ${selected}" data-id="${p.id}">
+        <div class="photo-cover">
+          <input type="checkbox" class="photo-check" ${checked}>
+          <span class="type-badge">${catLabel}</span>
+          <img src="${p.thumbnailUrl}" alt="${escapeHtml(p.name)}" loading="lazy" onerror="this.src='images/raw-placeholder.svg'">
+          ${play}
+        </div>
+        <div class="photo-meta">
+          <div class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
+          <div class="info">${formatSize(p.size)}<br>${formatDate(p.modifiedTime)}</div>
+        </div>
+        <div class="photo-actions">
+          <div class="dropdown" style="flex:1;position:relative;">
+            <div class="act loc" title="打开位置">📂</div>
+            <div class="dropdown-menu">
+              <div class="item" data-mode="folder">📁 打开文件夹</div>
+              <div class="item" data-mode="file">👁 打开文件</div>
+            </div>
+          </div>
+          ${!isRaw ? '<div class="act prev" title="预览">👁</div>' : ''}
+          <div class="act del" title="删除">🗑</div>
+        </div>
+      </div>`;
+  }
+
+  function updateGallerySelectionUI() {
+    const n = state.gallery.selected.length;
+    const tag = document.getElementById('gSelectedTag');
+    if (tag) { tag.style.display = n ? 'inline-flex' : 'none'; tag.textContent = `已选中 ${n} 张`; }
+    const exp = document.getElementById('gExpCnt'); if (exp) exp.textContent = n;
+    const del = document.getElementById('gDelCnt'); if (del) del.textContent = n;
+    const expBtn = document.getElementById('gExport'); if (expBtn) expBtn.disabled = n === 0;
+    const delBtn = document.getElementById('gBatchDel'); if (delBtn) delBtn.disabled = n === 0;
+    const clr = document.getElementById('gClearSel'); if (clr) clr.disabled = n === 0;
+    // 重新渲染卡片选中态
+    document.querySelectorAll('.photo-card').forEach(card => {
+      const id = card.dataset.id;
+      const chk = card.querySelector('.photo-check');
+      if (chk) chk.checked = state.gallery.selected.includes(id);
+      card.classList.toggle('selected', state.gallery.selected.includes(id));
+    });
+  }
+
+  function renderGalleryPager() {
+    const g = state.gallery;
+    const wrap = document.getElementById('gPager');
+    if (!g.photos.length) { wrap.innerHTML = ''; return; }
+    const totalPages = Math.ceil(g.total / g.pageSize);
+    const cur = g.page;
+    // 生成页码（最多显示 7 个）
+    let pages = [];
+    if (totalPages <= 7) for (let i = 1; i <= totalPages; i++) pages.push(i);
+    else { pages = [1, '...', cur - 1, cur, cur + 1, '...', totalPages].filter((v, i, a) => v !== '...' || a[i - 1] !== '...'); }
+    const pageBtns = pages.map(p => p === '...' ? '<span style="color:var(--muted);">···</span>'
+      : `<button class="pg-btn ${p === cur ? 'active' : ''}" data-page="${p}">${p}</button>`).join('');
+    wrap.innerHTML = `
+      <div class="pagination">
+        <span class="pg-total">第 ${cur}/${totalPages} 页 · 共 ${g.total} 条</span>
+        <button class="pg-btn" data-page="1" ${cur === 1 ? 'disabled' : ''} title="首页">«</button>
+        <button class="pg-btn" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''}>‹</button>
+        ${pageBtns}
+        <button class="pg-btn" data-page="${cur + 1}" ${cur === totalPages ? 'disabled' : ''}>›</button>
+        <button class="pg-btn" data-page="${totalPages}" ${cur === totalPages ? 'disabled' : ''} title="末页">»</button>
+        <select class="select pg-size" id="gPageSize">
+          ${[36, 72, 108, 144].map(s => `<option value="${s}" ${s === g.pageSize ? 'selected' : ''}>${s}/页</option>`).join('')}
+        </select>
+      </div>`;
+    wrap.querySelectorAll('.pg-btn[data-page]').forEach(b => {
+      b.onclick = () => { const p = +b.dataset.page; if (p && p !== cur) { state.gallery.page = p; fetchGallery(); } };
+    });
+    wrap.querySelector('#gPageSize').onchange = e => { state.gallery.pageSize = +e.target.value; state.gallery.page = 1; fetchGallery(); };
+  }
+
+  /* ---- 单个删除 ---- */
+  function openDeleteModal(id) {
+    const photo = state.gallery.photos.find(p => p.id === id);
+    if (!photo) return;
+    const syncHtml = state.gallery.category === 'jpg'
+      ? `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;">
+           <input type="checkbox" class="checkbox" id="delSyncRaw"> 同时删除对应的 RAW 底片
+         </label>` : '';
+    confirmModal({
+      title: '确认删除', okText: '删除', okType: 'danger',
+      content: `<p>确定要删除照片 <strong style="color:var(--accent);">${escapeHtml(photo.name)}</strong> 吗？</p>${syncHtml}`,
+      onOk: async () => {
+        const sync = document.getElementById('delSyncRaw')?.checked;
+        const res = await mockApi.deletePhoto(id, sync, state.selectedRepoId);
+        if (res.success) { toast('删除成功', 'success'); await fetchGallery(); await refreshStorage(); }
+        else toast('删除失败', 'error');
+      }
+    });
+  }
+
+  /* ---- 批量删除 ---- */
+  function openBatchDelete() {
+    const n = state.gallery.selected.length;
+    if (!n) return toast('请先选择要删除的照片', 'warning');
+    const syncHtml = state.gallery.category === 'jpg'
+      ? `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;">
+           <input type="checkbox" class="checkbox" id="batchSyncRaw"> 同时删除对应的 RAW 底片
+         </label>
+         <div class="alert warning" style="margin-top:12px;"><span class="ico">⚠</span><div><div class="title">警告</div><div class="desc">此操作将同时删除 JPG 和对应 RAW，且不可恢复！</div></div></div>` : '';
+    confirmModal({
+      title: '批量删除确认', okText: '删除', okType: 'danger',
+      content: `<p>确定要删除选中的 <strong style="color:var(--accent);">${n}</strong> 张照片吗？</p>${syncHtml}`,
+      onOk: async () => {
+        const res = await mockApi.batchDeleteRaws(state.gallery.selected, state.selectedRepoId);
+        if (res.success) { toast(`删除完成！成功 ${res.data.success.length} 张`, 'success'); state.gallery.selected = []; await fetchGallery(); await refreshStorage(); }
+      }
+    });
+  }
+
+  /* ---- 批量导出 ---- */
+  function openExportModal() {
+    const n = state.gallery.selected.length;
+    if (!n) return toast('请先选择要导出的照片', 'warning');
+    const body = `
+      <div class="alert info"><span class="ico">ℹ</span><div><div class="title">将导出 ${n} 张照片</div><div class="desc">文件将以增量模式复制，已存在的文件将被跳过</div></div></div>
+      <label class="form-label">目标路径</label>
+      <div class="input-group">
+        <input class="input" id="expPath" placeholder="例如：/Users/colorh/Pictures/导出">
+        <button class="btn" id="expSelectFolder">📂 选择文件夹</button>
+      </div>
+      <div class="form-hint">点击"选择文件夹"按钮打开系统对话框，自动获取完整路径</div>`;
+    const foot = `<button class="btn" data-act="cancel">取消</button><button class="btn primary" id="expConfirm" disabled>导出</button>`;
+    const { mask, close } = openModal({ title: '批量导出照片', body, foot, width: 560 });
+    const pathInput = mask.querySelector('#expPath');
+    const confirmBtn = mask.querySelector('#expConfirm');
+    pathInput.oninput = e => confirmBtn.disabled = !e.target.value.trim();
+    mask.querySelector('#expSelectFolder').onclick = async () => {
+      const res = await mockApi.selectFolder();
+      if (!res.success) nativeUnavailable('系统文件夹选择对话框');
+    };
+    mask.querySelector('[data-act="cancel"]').onclick = close;
+    mask.querySelector('#expConfirm').onclick = async () => {
+      const target = pathInput.value.trim();
+      confirmBtn.disabled = true; confirmBtn.textContent = '导出中...';
+      const res = await mockApi.batchExport(state.gallery.selected, target, state.selectedRepoId);
+      if (res.success) {
+        const d = res.data;
+        toast(`导出完成！成功 ${d.successCount} 张${d.skippedCount ? '，跳过 ' + d.skippedCount : ''}`, 'success');
+        close();
+        state.gallery.selected = [];
+        await fetchGallery();
+      } else toast('导出失败', 'error');
+    };
+  }
+
+  /* ---- 图片预览灯箱 ---- */
+  let lightboxState = { list: [], index: 0, rotate: 0, scale: 1 };
+  function openLightbox(id) {
+    // 以当前页为基础构建预览列表（简化版，真实项目支持跨页缓存）
+    lightboxState.list = state.gallery.photos.slice();
+    lightboxState.index = Math.max(0, lightboxState.list.findIndex(p => p.id === id));
+    lightboxState.rotate = 0; lightboxState.scale = 1;
+    renderLightbox();
+  }
+  function renderLightbox() {
+    const lb = lightboxState;
+    if (!lb.list.length) return;
+    const p = lb.list[lb.index];
+    const el = document.createElement('div');
+    el.className = 'lightbox';
+    el.innerHTML = `
+      <div class="lb-info">${escapeHtml(p.name)} · ${lb.index + 1}/${lb.list.length}</div>
+      <button class="lb-close">×</button>
+      ${lb.index > 0 ? '<button class="lb-nav prev">‹</button>' : ''}
+      ${lb.index < lb.list.length - 1 ? '<button class="lb-nav next">›</button>' : ''}
+      <div class="lb-img-wrap"><img class="lb-img" src="${p.url}" alt="${escapeHtml(p.name)}" style="transform:rotate(${lb.rotate}deg) scale(${lb.scale})"></div>
+      <div class="lb-toolbar">
+        <button class="lb-btn" data-act="left" title="向左旋转">↺</button>
+        <button class="lb-btn" data-act="right" title="向右旋转">↻</button>
+        <button class="lb-btn" data-act="zoomIn" title="放大">+</button>
+        <button class="lb-btn" data-act="zoomOut" title="缩小">−</button>
+        <button class="lb-btn" data-act="reset" title="重置">⟲</button>
+        <button class="lb-btn del" data-act="del" title="删除">🗑</button>
+      </div>`;
+    document.getElementById('modal-root').appendChild(el);
+    const close = () => el.remove();
+    el.querySelector('.lb-close').onclick = close;
+    el.addEventListener('click', e => { if (e.target === el) close(); });
+    const prev = el.querySelector('.lb-nav.prev'); if (prev) prev.onclick = () => { lb.index--; lb.rotate = 0; lb.scale = 1; close(); renderLightbox(); };
+    const next = el.querySelector('.lb-nav.next'); if (next) next.onclick = () => { lb.index++; lb.rotate = 0; lb.scale = 1; close(); renderLightbox(); };
+    el.querySelector('[data-act="left"]').onclick = () => { lb.rotate -= 90; updateLbImg(); };
+    el.querySelector('[data-act="right"]').onclick = () => { lb.rotate += 90; updateLbImg(); };
+    el.querySelector('[data-act="zoomIn"]').onclick = () => { lb.scale += 0.25; updateLbImg(); };
+    el.querySelector('[data-act="zoomOut"]').onclick = () => { lb.scale = Math.max(0.25, lb.scale - 0.25); updateLbImg(); };
+    el.querySelector('[data-act="reset"]').onclick = () => { lb.rotate = 0; lb.scale = 1; updateLbImg(); };
+    el.querySelector('[data-act="del"]').onclick = () => {
+      const id = lb.list[lb.index].id;
+      close();
+      openDeleteModal(id);
+    };
+    function updateLbImg() {
+      const img = el.querySelector('.lb-img');
+      img.style.transform = `rotate(${lb.rotate}deg) scale(${lb.scale})`;
+    }
+    // 键盘支持
+    const onKey = (e) => {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); }
+      else if (e.key === 'ArrowLeft' && lb.index > 0) { lb.index--; lb.rotate = 0; lb.scale = 1; close(); renderLightbox(); document.removeEventListener('keydown', onKey); }
+      else if (e.key === 'ArrowRight' && lb.index < lb.list.length - 1) { lb.index++; lb.rotate = 0; lb.scale = 1; close(); renderLightbox(); document.removeEventListener('keydown', onKey); }
+    };
+    document.addEventListener('keydown', onKey);
+  }
+
+  /* ============ 页面：存储卡导入 ============ */
+  const importState = { step: 0, sourcePath: '', smartNaming: false, importing: false, result: null };
+
+  function renderImport() {
+    const c = document.getElementById('content');
+    const steps = ['选择路径', '导入中', '完成'];
+    const stepDesc = ['输入存储卡路径', '扫描并复制文件', '导入结果'];
+    c.innerHTML = `
+      <div class="page">
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+            <div style="width:42px;height:42px;border-radius:10px;background:var(--accent-bg);border:1px solid var(--accent-border);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--accent);">⤓</div>
+            <div>
+              <h2 style="font-family:'Noto Serif SC',serif;font-size:20px;">存储卡导入</h2>
+              <p style="color:var(--muted);font-size:13px;margin-top:2px;">一键将相机存储卡的 RAW、JPG 和视频收入仓库</p>
+            </div>
+          </div>
+          <div class="steps">
+            ${steps.map((s, i) => `
+              <div class="step ${importState.step > i ? 'done' : ''} ${importState.step === i ? 'active' : ''}">
+                <div class="dot">${importState.step > i ? '✓' : i + 1}</div>
+                <div class="txt"><div class="t">${s}</div><div class="d">${stepDesc[i]}</div></div>
+              </div>`).join('')}
+          </div>
+        </div>
+        <div id="importContent"></div>
+      </div>`;
+    renderImportStep();
+  }
+
+  function renderImportStep() {
+    const wrap = document.getElementById('importContent');
+    if (importState.step === 0) {
+      wrap.innerHTML = `
+        <div class="card">
+          <div class="alert info"><span class="ico">ℹ</span><div>
+            <div class="title">使用说明</div>
+            <div class="desc">1. 将相机存储卡插入电脑<br>2. 输入存储卡的根目录路径（如 /Volumes/SD_CARD）<br>3. 系统会自动扫描所有 JPG、RAW 和视频文件<br>4. 文件将按类型分类存储到对应目录</div>
+          </div></div>
+          <div style="margin-bottom:20px;">
+            <label class="form-label">目标存储仓库</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              ${repoSelectHTML(state.selectedRepoId, 'id="impRepo"')}
+              <button class="btn" id="impAddRepo">+ 添加仓库</button>
+              <button class="btn" id="impManageRepo">⚙ 管理</button>
+            </div>
+            <div class="form-hint">照片将导入到选中的仓库中</div>
+          </div>
+          <div style="margin-bottom:20px;">
+            <label class="form-label">存储卡路径</label>
+            <div class="input-group">
+              <input class="input" id="impPath" placeholder="例如: /Volumes/SD_CARD" value="${escapeHtml(importState.sourcePath)}">
+              <button class="btn" id="impSelectFolder">📂 选择文件夹</button>
+            </div>
+            <div class="form-hint">默认扫描路径: /Volumes · 点击"选择文件夹"按钮打开系统对话框</div>
+          </div>
+          <div style="margin-bottom:24px;">
+            <label style="display:flex;align-items:center;gap:10px;font-weight:500;">
+              <span class="switch"><input type="checkbox" id="impSmart" ${importState.smartNaming ? 'checked' : ''}><span class="slider"></span></span>
+              智能命名
+            </label>
+            <div class="form-hint" style="margin-top:6px;line-height:1.8;">
+              开启后，文件将按所在子文件夹名称重命名：<br>
+              • 无中文名文件：文件夹名-序号（如 100CANON-1.jpg）<br>
+              • 已有中文名文件：文件夹名_原中文名（如 100CANON_旅行第一天.jpg）
+            </div>
+          </div>
+          <button class="btn primary lg" id="impStart">⤓ 开始导入</button>
+        </div>`;
+      bindRepoSelect(wrap, id => { state.selectedRepoId = id; refreshStorage(); });
+      wrap.querySelector('#impAddRepo').onclick = () => openRepoModal(null, () => renderImportStep());
+      wrap.querySelector('#impManageRepo').onclick = () => openRepoManageModal(() => renderImportStep());
+      wrap.querySelector('#impSelectFolder').onclick = async () => {
+        const res = await mockApi.selectFolder();
+        if (!res.success) nativeUnavailable('系统文件夹选择对话框');
+      };
+      wrap.querySelector('#impPath').oninput = e => importState.sourcePath = e.target.value;
+      wrap.querySelector('#impSmart').onchange = e => importState.smartNaming = e.target.checked;
+      wrap.querySelector('#impStart').onclick = startImport;
+    } else if (importState.step === 1) {
+      renderImportProgress();
+    } else if (importState.step === 2) {
+      renderImportResult();
+    }
+  }
+
+  let importTimer = null;
+  async function startImport() {
+    if (!importState.sourcePath.trim()) return toast('请输入存储卡路径', 'warning');
+    importState.step = 1;
+    importState.importing = true;
+    renderImport();
+    // 模拟 SSE 导入（真实后端通过 EventSource 推送）
+    const res = await mockApi.importFromCard(
+      importState.sourcePath, state.selectedRepoId, importState.smartNaming,
+      (progress) => { updateImportProgress(progress); }
+    );
+    importTimer && clearInterval(importTimer);
+    if (res.success) {
+      importState.result = res.data;
+      importState.step = 2;
+      importState.importing = false;
+      renderImportStep();
+      refreshStorage();
+      toast('导入完成！', 'success');
+    }
+  }
+
+  function renderImportProgress() {
+    const wrap = document.getElementById('importContent');
+    wrap.innerHTML = `
+      <div class="card" style="text-align:center;padding:48px 24px;">
+        <div class="spinner" style="margin:0 auto 20px;"></div>
+        <h3 style="margin-bottom:18px;">正在导入中...</h3>
+        <div class="stat-row">
+          <div class="stat-box"><div class="label">总文件数</div><div class="num" id="impTotal">0</div></div>
+          <div class="stat-box"><div class="label">已处理</div><div class="num success" id="impDone">0</div></div>
+          <div class="stat-box"><div class="label">剩余</div><div class="num accent" id="impRemain">0</div></div>
+          <div class="stat-box"><div class="label">预计剩余</div><div class="num accent" id="impEta">0<small style="font-size:13px;color:var(--muted);font-weight:400;"> 分钟</small></div></div>
+        </div>
+        <div id="impCurFile" style="color:var(--muted);font-size:13px;margin-bottom:18px;min-height:20px;"></div>
+        <div class="progress-track" style="max-width:600px;margin:0 auto;">
+          <div class="progress-fill active" id="impBar"></div>
+        </div>
+        <div style="color:var(--muted);font-size:12px;margin-top:10px;" id="impPct">0%</div>
+      </div>`;
+  }
+  function updateImportProgress(p) {
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerHTML = v; };
+    set('impTotal', p.total);
+    set('impDone', `<span style="color:var(--success);">${p.processed}</span>`);
+    set('impRemain', p.remaining);
+    set('impEta', `${p.estimatedTimeRemaining > 0 ? Math.ceil(p.estimatedTimeRemaining / 60) : (p.total > 0 ? '< 1' : 0)}<small style="font-size:13px;color:var(--muted);font-weight:400;"> 分钟</small>`);
+    const cur = document.getElementById('impCurFile');
+    if (cur) cur.innerHTML = p.currentFile ? `正在处理: <strong style="color:var(--text);">${escapeHtml(p.currentFile)}</strong>` : '';
+    const bar = document.getElementById('impBar');
+    if (bar) bar.style.width = p.percentage + '%';
+    set('impPct', p.total === 0 ? (p.percentage === 100 ? '无文件' : '扫描中...') : `${p.percentage}% (${p.processed}/${p.total})`);
+  }
+
+  function renderImportResult() {
+    const r = importState.result;
+    const total = r.jpgCount + r.rawCount + r.videoCount;
+    const wrap = document.getElementById('importContent');
+    const sumCard = (label, count, color, icon) => `
+      <div class="stat-box"><div class="label">${label}</div>
+        <div class="num ${color}">${icon} ${count}<small style="font-size:13px;color:var(--muted);font-weight:400;"> ${label.includes('视频') ? '个' : '张'}</small></div>
+      </div>`;
+    wrap.innerHTML = `
+      <div class="card">
+        ${total === 0
+          ? `<div class="alert warning"><span class="ico">⚠</span><div><div class="title">未找到可导入的文件</div><div class="desc">所选文件夹中没有找到支持的媒体文件（JPG、RAW、视频）</div></div></div>`
+          : `<div class="alert success"><span class="ico">✓</span><div>
+              <div class="title">${r.skippedCount > 0 ? `导入完成！新增 ${total} 个文件，跳过 ${r.skippedCount} 个已存在文件` : `导入完成！成功导入 ${total} 个文件`}</div>
+              <div class="desc">文件已成功导入到仓库 <strong>${escapeHtml(r.targetRepo)}</strong></div>
+            </div></div>`}
+        <div class="stat-row" style="margin-top:8px;">
+          ${sumCard('JPG 照片', r.jpgCount, 'success', '🖼')}
+          ${sumCard('RAW 底片', r.rawCount, 'accent', '🎞')}
+          ${sumCard('视频文件', r.videoCount, '', '🎬')}
+        </div>
+        ${r.skippedCount > 0 ? `<div class="alert info"><span class="ico">ℹ</span><div><div class="title">${r.skippedCount} 个文件已存在并被跳过</div><div class="desc">这些文件在目标位置已经存在，未进行覆盖操作</div></div></div>` : ''}
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button class="btn primary" id="impAgain">继续导入</button>
+          <button class="btn" id="impGoGallery">去浏览照片</button>
+        </div>
+      </div>`;
+    wrap.querySelector('#impAgain').onclick = () => { importState.step = 0; importState.result = null; importState.sourcePath = ''; renderImportStep(); };
+    wrap.querySelector('#impGoGallery').onclick = () => go('gallery');
+  }
+
+  /* ============ 页面：同步删除 RAW ============ */
+  const syncState = { orphanRaws: [], selected: [], loading: false, page: 1, pageSize: 20 };
+
+  async function renderSyncDelete() {
+    const c = document.getElementById('content');
+    c.innerHTML = `
+      <div class="page">
+        <h2 class="page-title">同步删除 RAW 底片</h2>
+        <div class="alert info"><span class="ico">ℹ</span><div>
+          <div class="title">功能说明</div>
+          <div class="desc">此功能用于删除那些没有对应 JPG 照片的 RAW 底片。当你在浏览 JPG 时删除了一些照片，对应的 RAW 文件就变成了"孤立"文件，可以在这里一键清理。</div>
+        </div></div>
+        <div class="card" style="margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:13px;color:var(--text-secondary);">选择存储仓库：</span>
+            ${repoSelectHTML(state.selectedRepoId, 'id="syncRepo"')}
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="stat-row" style="margin-bottom:0;">
+            <div class="stat-box"><div class="label">孤立 RAW 文件</div><div class="num accent" id="syncTotal">0<small style="font-size:13px;color:var(--muted);"> 个</small></div></div>
+            <div class="stat-box"><div class="label">已选择</div><div class="num" id="syncSel">0<small style="font-size:13px;color:var(--muted);"> 个</small></div></div>
+            <div class="stat-box"><div class="label">选中文件大小</div><div class="num" id="syncSize" style="font-size:18px;">0 B</div></div>
+            <div class="stat-box" style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;">
+              <div style="display:flex;gap:10px;">
+                <button class="btn" id="syncRefresh">↻ 刷新</button>
+                <button class="btn danger" id="syncDel" disabled>🗑 删除选中</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="syncList"><div class="spinner"></div><div class="loading-text">正在扫描孤立 RAW 文件...</div></div>
+      </div>`;
+    bindRepoSelect(c, async id => { state.selectedRepoId = id; syncState.page = 1; await refreshStorage(); await fetchOrphanRaws(); });
+    c.querySelector('#syncRefresh').onclick = fetchOrphanRaws;
+    c.querySelector('#syncDel').onclick = openSyncDelete;
+    await fetchOrphanRaws();
+  }
+
+  async function fetchOrphanRaws() {
+    syncState.loading = true;
+    syncState.selected = [];
+    const wrap = document.getElementById('syncList');
+    if (wrap) wrap.innerHTML = `<div class="spinner"></div><div class="loading-text">正在扫描孤立 RAW 文件...</div>`;
+    const res = await mockApi.getOrphanRaws(state.selectedRepoId);
+    syncState.loading = false;
+    if (res.success) syncState.orphanRaws = res.data;
+    renderSyncList();
+  }
+
+  function renderSyncList() {
+    const total = syncState.orphanRaws.length;
+    const totalPages = Math.max(1, Math.ceil(total / syncState.pageSize));
+    if (syncState.page > totalPages) syncState.page = totalPages;
+    const start = (syncState.page - 1) * syncState.pageSize;
+    const pageItems = syncState.orphanRaws.slice(start, start + syncState.pageSize);
+
+    document.getElementById('syncTotal').innerHTML = `${total}<small style="font-size:13px;color:var(--muted);"> 个</small>`;
+    updateSyncStats();
+
+    const wrap = document.getElementById('syncList');
+    if (!total) {
+      wrap.innerHTML = `<div class="card"><div class="empty"><div class="ico">✓</div><div>没有发现孤立的 RAW 文件</div><div style="font-size:12px;margin-top:6px;color:var(--muted);">所有 RAW 文件都有对应的 JPG 照片，无需清理</div></div></div>`;
+      return;
+    }
+    const allChecked = pageItems.length > 0 && pageItems.every(p => syncState.selected.includes(p.id));
+    wrap.innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);">
+            <input type="checkbox" class="checkbox" id="syncAll" ${allChecked ? 'checked' : ''}> 全选（第 ${syncState.page} 页）
+          </label>
+        </div>
+        <div class="orphan-list">
+          ${pageItems.map(item => `
+            <div class="orphan-item" data-id="${item.id}">
+              <input type="checkbox" class="checkbox sync-check" data-id="${item.id}" ${syncState.selected.includes(item.id) ? 'checked' : ''}>
+              <div class="orphan-thumb" data-id="${item.id}"><img src="${item.thumbnailUrl}" alt="${escapeHtml(item.name)}" onerror="this.src='images/raw-placeholder.svg'"></div>
+              <div class="orphan-meta">
+                <div class="name" data-id="${item.id}">${escapeHtml(item.name)}</div>
+                <div class="path" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</div>
+              </div>
+              <span class="tag orange">${(item.extension || '.raw').toUpperCase().replace('.', '')}</span>
+              <span class="tag">${formatSize(item.size)}</span>
+            </div>`).join('')}
+        </div>
+        <div class="pagination" style="margin-top:14px;">
+          <span class="pg-total">共 ${total} 个文件</span>
+          <button class="pg-btn" data-page="${syncState.page - 1}" ${syncState.page === 1 ? 'disabled' : ''}>‹</button>
+          <span class="pg-btn active">${syncState.page} / ${totalPages}</span>
+          <button class="pg-btn" data-page="${syncState.page + 1}" ${syncState.page === totalPages ? 'disabled' : ''}>›</button>
+        </div>
+      </div>`;
+    wrap.querySelector('#syncAll').onchange = e => {
+      if (e.target.checked) pageItems.forEach(p => { if (!syncState.selected.includes(p.id)) syncState.selected.push(p.id); });
+      else syncState.selected = syncState.selected.filter(id => !pageItems.some(p => p.id === id));
+      renderSyncList();
+    };
+    wrap.querySelectorAll('.sync-check').forEach(ch => {
+      ch.onchange = e => {
+        const id = ch.dataset.id;
+        if (e.target.checked) { if (!syncState.selected.includes(id)) syncState.selected.push(id); }
+        else syncState.selected = syncState.selected.filter(x => x !== id);
+        updateSyncStats();
+        const allChecked = pageItems.every(p => syncState.selected.includes(p.id));
+        wrap.querySelector('#syncAll').checked = allChecked;
+      };
+    });
+    // 点击缩略图/名称 → 打开（演示提示）
+    wrap.querySelectorAll('.orphan-thumb, .orphan-meta .name').forEach(el => {
+      el.onclick = () => nativeUnavailable('在系统中打开此 RAW 文件');
+    });
+    wrap.querySelectorAll('.pg-btn[data-page]').forEach(b => {
+      b.onclick = () => { const p = +b.dataset.page; if (p >= 1 && p <= totalPages) { syncState.page = p; renderSyncList(); } };
+    });
+  }
+
+  function updateSyncStats() {
+    const sel = syncState.selected;
+    const size = syncState.orphanRaws.filter(o => sel.includes(o.id)).reduce((s, o) => s + o.size, 0);
+    document.getElementById('syncSel').innerHTML = `${sel.length}<small style="font-size:13px;color:var(--muted);"> 个</small>`;
+    document.getElementById('syncSize').textContent = formatSize(size);
+    document.getElementById('syncDel').disabled = sel.length === 0;
+  }
+
+  function openSyncDelete() {
+    const n = syncState.selected.length;
+    if (!n) return toast('请先选择要删除的文件', 'warning');
+    confirmModal({
+      title: '确认删除', okText: '确认删除', okType: 'danger',
+      content: `
+        <p>确定要删除选中的 <strong style="color:var(--accent);">${n}</strong> 个 RAW 文件吗？</p>
+        <div class="alert warning" style="margin-top:12px;"><span class="ico">⚠</span><div><div class="title">此操作不可恢复</div><div class="desc">删除后文件将被永久移除，请确保这些 RAW 文件确实不需要了</div></div></div>`,
+      onOk: async () => {
+        const res = await mockApi.batchDeleteRaws(syncState.selected, state.selectedRepoId);
+        if (res.success) {
+          toast(`成功删除 ${res.data.success.length} 个文件`, 'success');
+          syncState.selected = [];
+          await fetchOrphanRaws();
+          await refreshStorage();
+        } else toast('删除失败', 'error');
+      }
+    });
+  }
+
+  /* ============ 页面：仓库配置 ============ */
+  function renderSettings() {
+    const c = document.getElementById('content');
+    c.innerHTML = `
+      <div class="page">
+        <h2 class="page-title">存储仓库配置</h2>
+        <div class="alert info"><span class="ico">ℹ</span><div>
+          <div class="title">仓库说明</div>
+          <div class="desc">存储仓库是照片文件的存放目录，每个仓库包含 jpg、raw、video 三个子文件夹。<br>你可以创建多个仓库来分类管理不同相机或不同项目的照片。<br>默认仓库会作为照片浏览和导入的默认选择。</div>
+        </div></div>
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">🗂 仓库列表</div>
+            <button class="btn primary" id="repoAdd">+ 添加仓库</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="table">
+              <thead><tr><th>仓库名称</th><th>存储路径</th><th style="width:240px;">操作</th></tr></thead>
+              <tbody>
+                ${REPOS.map(r => `
+                  <tr data-id="${r.id}">
+                    <td>
+                      <span style="display:inline-flex;align-items:center;gap:8px;">
+                        <span style="color:var(--accent);">🗂</span>
+                        <strong>${escapeHtml(r.name)}</strong>
+                        ${r.isDefault ? '<span class="tag blue">默认</span>' : ''}
+                      </span>
+                    </td>
+                    <td><span class="mono">${escapeHtml(r.path)}</span></td>
+                    <td>
+                      ${!r.isDefault ? `<button class="btn link sm" data-act="default">设为默认</button>` : ''}
+                      <button class="btn link sm" data-act="edit">编辑</button>
+                      <button class="btn link danger sm" data-act="del">删除</button>
+                    </td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    c.querySelector('#repoAdd').onclick = () => openRepoModal(null, renderSettings);
+    c.querySelectorAll('tr[data-id]').forEach(tr => {
+      const id = tr.dataset.id;
+      const repo = REPOS.find(r => r.id === id);
+      const setAct = tr.querySelector('[data-act="default"]');
+      if (setAct) setAct.onclick = async () => { await mockApi.setDefaultRepo(id); toast('设置成功', 'success'); renderSettings(); refreshStorage(); };
+      tr.querySelector('[data-act="edit"]').onclick = () => openRepoModal(repo, renderSettings);
+      tr.querySelector('[data-act="del"]').onclick = () => {
+        confirmModal({
+          title: '确认删除', okText: '删除', okType: 'danger',
+          content: `<p>确定要删除仓库 <strong style="color:var(--accent);">${escapeHtml(repo.name)}</strong> 吗？</p>
+                    <div class="form-hint" style="margin-top:8px;">注意：这不会删除实际文件，只是移除配置。</div>`,
+          onOk: async () => {
+            await mockApi.deleteRepo(id);
+            if (state.selectedRepoId === id) state.selectedRepoId = REPOS[0]?.id;
+            toast('删除成功', 'success');
+            renderSettings();
+            refreshStorage();
+          }
+        });
+      };
+    });
+  }
+
+  // 添加 / 编辑仓库弹窗
+  function openRepoModal(repo, onClose) {
+    const isEdit = !!repo;
+    const body = `
+      <label class="form-label">仓库名称</label>
+      <input class="input" id="rmName" placeholder="例如：索尼照片库、工作项目A" value="${repo ? escapeHtml(repo.name) : ''}" style="width:100%;margin-bottom:16px;">
+      <label class="form-label">存储路径 <span style="color:var(--muted);font-weight:400;">（路径不存在会自动创建）</span></label>
+      <div class="input-group">
+        <input class="input" id="rmPath" placeholder="例如：/Users/colorh/Pictures/索尼照片" value="${repo ? escapeHtml(repo.path) : ''}">
+        <button class="btn" id="rmSelect">📂 选择文件夹</button>
+      </div>
+      <div class="form-hint">点击"选择文件夹"按钮打开系统对话框，自动获取完整路径</div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:16px;font-size:13px;">
+        <input type="checkbox" class="checkbox" id="rmDefault" ${repo?.isDefault ? 'checked' : ''}> 设为默认仓库
+      </label>`;
+    const foot = `<button class="btn" data-act="cancel">取消</button><button class="btn primary" data-act="ok">${isEdit ? '保存' : '添加'}</button>`;
+    const { mask, close } = openModal({ title: isEdit ? '编辑仓库' : '添加仓库', body, foot, width: 520 });
+    mask.querySelector('[data-act="cancel"]').onclick = close;
+    mask.querySelector('#rmSelect').onclick = async () => {
+      const res = await mockApi.selectFolder();
+      if (!res.success) nativeUnavailable('系统文件夹选择对话框');
+    };
+    mask.querySelector('[data-act="ok"]').onclick = async () => {
+      const name = mask.querySelector('#rmName').value.trim();
+      const path = mask.querySelector('#rmPath').value.trim();
+      const isDefault = mask.querySelector('#rmDefault').checked;
+      if (!name) return toast('请输入仓库名称', 'warning');
+      if (!path) return toast('请输入存储路径', 'warning');
+      if (isEdit) { await mockApi.deleteRepo(repo.id); }
+      await mockApi.addRepo({ name, path, isDefault });
+      toast(isEdit ? '修改成功' : '添加成功', 'success');
+      close();
+      if (onClose) onClose();
+      refreshStorage();
+    };
+  }
+
+  // 仓库管理弹窗（导入页用）
+  function openRepoManageModal(onClose) {
+    const body = `
+      <div style="overflow-x:auto;">
+        <table class="table">
+          <thead><tr><th>名称</th><th>路径</th><th style="width:200px;">操作</th></tr></thead>
+          <tbody>
+            ${REPOS.map(r => `
+              <tr data-id="${r.id}">
+                <td><span style="display:inline-flex;align-items:center;gap:6px;">🗂 ${escapeHtml(r.name)} ${r.isDefault ? '<span class="tag blue">默认</span>' : ''}</span></td>
+                <td><span class="mono">${escapeHtml(r.path)}</span></td>
+                <td>
+                  ${!r.isDefault ? `<button class="btn link sm" data-act="default">设为默认</button>` : ''}
+                  <button class="btn link danger sm" data-act="del">删除</button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    const { mask, close } = openModal({ title: '管理存储仓库', body, width: 680 });
+    mask.querySelectorAll('tr[data-id]').forEach(tr => {
+      const id = tr.dataset.id;
+      const d = tr.querySelector('[data-act="del"]');
+      const def = tr.querySelector('[data-act="default"]');
+      if (def) def.onclick = async () => { await mockApi.setDefaultRepo(id); toast('设置成功', 'success'); close(); if (onClose) onClose(); refreshStorage(); };
+      if (d) d.onclick = async () => {
+        if (REPOS.length <= 1) return toast('至少保留一个仓库', 'warning');
+        await mockApi.deleteRepo(id);
+        if (state.selectedRepoId === id) state.selectedRepoId = REPOS[0]?.id;
+        toast('删除成功', 'success');
+        close(); if (onClose) onClose(); refreshStorage();
+      };
+    });
+  }
+
+  /* ============ ⑤ 路由 & 初始化 ============ */
+  function go(route) {
+    state.route = route;
+    renderNav();
+    closeAllOverlays();
+    if (route === 'gallery') renderGallery();
+    else if (route === 'import') renderImport();
+    else if (route === 'sync-delete') renderSyncDelete();
+    else if (route === 'settings') renderSettings();
+  }
+  function closeAllOverlays() {
+    document.getElementById('modal-root').innerHTML = '';
+  }
+
+  // 主题切换
+  document.getElementById('themeToggle').onclick = () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    document.getElementById('themeToggle').textContent = next === 'dark' ? '☀' : '☾';
+    try { localStorage.setItem('shiguang-theme', next); } catch (e) {}
+  };
+  // 恢复主题
+  try {
+    const saved = localStorage.getItem('shiguang-theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+      document.getElementById('themeToggle').textContent = saved === 'dark' ? '☀' : '☾';
+    }
+  } catch (e) {}
+
+  // 全局点击关闭下拉
+  document.addEventListener('click', closeDropdowns);
+
+  // 启动
+  (async function init() {
+    renderNav();
+    await refreshStorage();
+    go('gallery');
+  })();
+  </script>
+</body>
+</html>
