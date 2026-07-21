@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
 
 // 支持的文件扩展名
 const FILE_EXTENSIONS = {
@@ -141,6 +142,17 @@ async function isSameFile(srcPath, destPath) {
   }
 }
 
+// 计算文件 SHA-256 哈希（流式读取，适合大文件），返回带前缀的哈希字符串：sha256:xxxxx
+async function computeFileHash(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = require('fs').createReadStream(filePath);
+    stream.on('data', data => hash.update(data));
+    stream.on('end', () => resolve('sha256:' + hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+
 module.exports = {
   FILE_EXTENSIONS,
   getFileType,
@@ -150,5 +162,6 @@ module.exports = {
   deleteFile,
   getFileNameWithoutExt,
   fileExists,
-  isSameFile
+  isSameFile,
+  computeFileHash
 };

@@ -1,17 +1,60 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { scanDirectory, ensureDir, copyFile, deleteFile, getFileNameWithoutExt, fileExists, getFileType } = require('../utils/fileUtils');
+const { scanDirectory, ensureDir, copyFile, deleteFile, getFileNameWithoutExt, fileExists, getFileType, computeFileHash } = require('../utils/fileUtils');
+const ManifestService = require('./manifestService');
+const { readKeyExif } = require('./exifService');
 
 class FileService {
   constructor(basePath) {
     this.basePath = basePath;
     this._scanCache = new Map();
     this._cacheTTL = 5000;
+    // 仓库清单服务：作为照片列表的统一数据源
+    this.manifest = new ManifestService(basePath);
   }
 
   // 获取分类目录路径
   getCategoryPath(category) {
     return path.join(this.basePath, category);
+  }
+
+  // 根据归档策略计算文件在仓库中的相对路径（forward slash）
+  // archiveByExif 为 false：直接放在 category/ 下
+  // archiveByExif 为 true：按 EXIF 拍摄时间或 mtime 归档到 category/YYYY/MM/ 下
+  // fileName 为经过 smartNaming 处理后的最终文件名
+  getArchiveRelativePath(fileName, exif, mtime, category, archiveByExif) {
+    if (!archiveByExif) {
+      return `${category}/${fileName}`;
+    }
+
+    // 取拍摄时间字符串，优先 EXIF，失败回退到 mtime（ISO 字符串）
+    let dateStr = exif && exif.dateTimeOriginal ? exif.dateTimeOriginal : null;
+    let year = null;
+    let month = null;
+
+    if (dateStr) {
+      // EXIF 格式形如 "2024:03:15 14:30:00"，将前半段的冒号替换为横杠
+      // 只取前 10 个字符 "2024:03:15" -> "2024-03-15"
+      const normalized = dateStr.replace(/:/g, '-');
+      const match = /^(\d{4})-(\d{2})/.exec(normalized);
+      if (match) {
+        year = match[1];
+        month = match[2];
+      }
+    }
+
+    // EXIF 解析失败，回退到 mtime
+    if (!year || !month) {
+      const date = mtime ? new Date(mtime) : new Date();
+      if (isNaN(date.getTime())) {
+        // mtime 也无效，回退到当前时间
+        date.setTime(Date.now());
+      }
+      year = String(date.getFullYear());
+      month = String(date.getMonth() + 1).padStart(2, '0');
+    }
+
+    return `${category}/${year}/${month}/${fileName}`;
   }
 
   _getCachedScan(categoryPath) {
@@ -36,6 +79,8 @@ class FileService {
     } else {
       this._scanCache.clear();
     }
+    // 同时清空清单缓存，保证下次读取拿到最新数据
+    this.manifest.invalidateCache();
   }
 
   // 初始化分类目录
@@ -46,21 +91,30 @@ class FileService {
     }
   }
 
-  // 从存储卡导入照片（增量导入，不覆盖已有文件）
-  async importFromCard(sourcePath, progressCallback = null, smartNaming = false) {
+  // 从存储卡导入照片（增量导入，支持哈希去重、EXIF 读取、按 EXIF 时间归档、双盘镜像）
+  // options: { archiveByExif = true, mirrorPath = null }
+  async importFromCard(sourcePath, progressCallback = null, smartNaming = false, options = {}) {
+    const { archiveByExif = true, mirrorPath = null } = options;
+
     console.log('开始扫描目录:', sourcePath);
-    
+    console.log('归档策略 archiveByExif:', archiveByExif, '镜像盘 mirrorPath:', mirrorPath || '无');
+
+    // 确保清单已初始化（首次访问会触发扫描并生成清单，便于哈希去重）
+    await this.manifest.initFromScan();
+
     // 扫描存储卡中的所有媒体文件
     const files = await scanDirectory(sourcePath);
-    
+
     console.log(`扫描完成，找到 ${files.length} 个媒体文件`);
-    
+
     const results = {
       jpg: [],
       raw: [],
       video: [],
       errors: [],
-      skipped: []  // 记录跳过的文件
+      skipped: [],          // 哈希重复或已存在的文件
+      mirrorSuccess: [],    // 镜像成功（Task 5）
+      mirrorErrors: []      // 镜像失败
     };
 
     // 确保分类目录存在
@@ -69,7 +123,7 @@ class FileService {
     const totalFiles = files.length;
     let processedFiles = 0;
     const startTime = Date.now();
-    
+
     // 如果没有文件，立即返回结果
     if (totalFiles === 0) {
       console.log('没有找到媒体文件，导入结束');
@@ -85,7 +139,7 @@ class FileService {
       }
       return results;
     }
-    
+
     // 发送初始进度
     if (progressCallback) {
       progressCallback({
@@ -105,12 +159,12 @@ class FileService {
       if (!smartNaming) return file.name;
       const parentFolder = path.basename(path.dirname(file.path));
       const originalName = path.basename(file.name, file.extension);
-      
+
       // 如果原文件名包含中文，使用 文件夹名_原中文名 格式，不用序号
       if (chineseRegex.test(originalName)) {
         return `${parentFolder}_${originalName}${file.extension}`;
       }
-      
+
       // 非中文名使用 文件夹名-序号 格式
       if (!folderCounters[parentFolder]) {
         folderCounters[parentFolder] = 1;
@@ -120,35 +174,103 @@ class FileService {
       return name;
     };
 
-    // 按类型分类复制文件
+    // 生成不冲突的目标文件名：若 destPath 已存在且哈希不同，加 -1/-2/-3 后缀
+    const resolveAvailablePath = async (destPath) => {
+      if (!await fileExists(destPath)) {
+        return destPath;
+      }
+      const dir = path.dirname(destPath);
+      const ext = path.extname(destPath);
+      const baseName = path.basename(destPath, ext);
+      let idx = 1;
+      let candidate;
+      do {
+        candidate = path.join(dir, `${baseName}-${idx}${ext}`);
+        idx++;
+      } while (await fileExists(candidate));
+      return candidate;
+    };
+
+    // 按类型分类处理文件
     for (const file of files) {
       console.log(`处理文件 ${processedFiles + 1}/${totalFiles}: ${file.name}`);
-      
+
       try {
-        const targetDir = this.getCategoryPath(file.type);
-        const targetFileName = getSmartName(file);
-        const targetPath = path.join(targetDir, targetFileName);
-        const copyResult = await copyFile(file.path, targetPath);
-        
-        if (copyResult.skipped) {
-          // 文件被跳过（已存在）
+        // 1. 计算 SHA-256 哈希
+        const hash = await computeFileHash(file.path);
+
+        // 2. 哈希去重：命中清单则跳过
+        const existed = await this.manifest.findByHash(hash);
+        if (existed) {
           results.skipped.push({
             originalPath: file.path,
-            newPath: copyResult.path,
-            name: smartNaming ? targetFileName : file.name,
+            name: file.name,
             size: file.size,
-            reason: copyResult.reason || 'already_exists'
+            reason: 'duplicate_hash',
+            hash: hash,
+            existingRelPath: existed.relPath
           });
-          console.log(`  文件已存在，跳过: ${file.name}`);
+          console.log(`  哈希命中清单，跳过: ${file.name} -> ${existed.relPath}`);
         } else {
-          // 文件成功复制
-          results[file.type].push({
-            originalPath: file.path,
-            newPath: copyResult.path,
-            name: smartNaming ? targetFileName : file.name,
-            size: file.size
-          });
-          console.log(`  文件复制成功: ${file.name}`);
+          // 3. 未命中：确定归档相对路径（基于 smartNaming 后的最终文件名）
+          const targetFileName = getSmartName(file);
+          const mtimeIso = new Date(file.modifiedTime).toISOString();
+
+          // 先读取 EXIF（归档路径依赖 EXIF 时间），异常时 exif=null，不阻断
+          let exif = null;
+          try {
+            exif = await readKeyExif(file.path);
+          } catch (e) {
+            // readKeyExif 内部已捕获异常返回 null，这里兜底
+            console.error(`  读取 EXIF 异常: ${file.name}`, e.message);
+          }
+
+          const relPath = this.getArchiveRelativePath(
+            targetFileName,
+            exif,
+            mtimeIso,
+            file.type,
+            archiveByExif
+          );
+
+          // 4. 检查目标路径是否已存在：若存在且哈希不同，自动重命名
+          const targetPath = path.join(this.basePath, relPath);
+          const finalTargetPath = await resolveAvailablePath(targetPath);
+          const finalRelPath = path.relative(this.basePath, finalTargetPath).replace(/\\/g, '/');
+
+          // 5. 复制文件到主仓库
+          const copyResult = await copyFile(file.path, finalTargetPath);
+
+          if (copyResult.skipped) {
+            // 文件已存在（理论上前面已重命名避免冲突，这里仍兜底处理）
+            results.skipped.push({
+              originalPath: file.path,
+              newPath: copyResult.path,
+              name: smartNaming ? targetFileName : file.name,
+              size: file.size,
+              reason: copyResult.reason || 'already_exists'
+            });
+            console.log(`  文件已存在，跳过: ${file.name}`);
+          } else {
+            // 6. 文件成功复制，记录到清单
+            await this.manifest.addEntry(finalRelPath, {
+              hash: hash,
+              size: file.size,
+              mtime: mtimeIso,
+              exif: exif
+            });
+
+            results[file.type].push({
+              originalPath: file.path,
+              newPath: copyResult.path,
+              relPath: finalRelPath,
+              name: smartNaming ? targetFileName : file.name,
+              size: file.size,
+              hash: hash,
+              exif: exif
+            });
+            console.log(`  文件复制成功: ${file.name} -> ${finalRelPath}`);
+          }
         }
       } catch (error) {
         results.errors.push({
@@ -165,7 +287,7 @@ class FileService {
         const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
         const remainingFiles = totalFiles - processedFiles;
         const estimatedTimeRemaining = avgTimePerFile * remainingFiles; // 秒
-        
+
         progressCallback({
           total: totalFiles,
           processed: processedFiles,
@@ -176,50 +298,124 @@ class FileService {
         });
       }
     }
-    
+
+    // 统一保存清单
+    await this.manifest.save();
+
+    // Task 5: 双盘镜像（主导入完成后，若提供 mirrorPath，复制成功导入的文件到镜像盘）
+    if (mirrorPath) {
+      const allImported = [
+        ...results.jpg,
+        ...results.raw,
+        ...results.video
+      ];
+
+      for (const item of allImported) {
+        try {
+          if (!item.relPath) continue;
+          const mirrorTarget = path.join(mirrorPath, item.relPath);
+          // 先确保镜像目录存在
+          await ensureDir(path.dirname(mirrorTarget));
+          // 复制到镜像盘（不使用 copyFile 的 isSameFile 逻辑，直接 fs.copyFile 即可，避免误判跳过）
+          await fs.copyFile(item.newPath, mirrorTarget);
+          results.mirrorSuccess.push({
+            originalPath: item.originalPath,
+            newPath: item.newPath,
+            mirrorPath: mirrorTarget,
+            relPath: item.relPath
+          });
+        } catch (error) {
+          results.mirrorErrors.push({
+            originalPath: item.originalPath,
+            newPath: item.newPath,
+            mirrorPath: mirrorPath,
+            error: error.message
+          });
+          console.error(`  镜像失败: ${item.newPath}`, error.message);
+        }
+      }
+    }
+
     console.log('导入完成:', {
       jpg: results.jpg.length,
       raw: results.raw.length,
       video: results.video.length,
       skipped: results.skipped.length,
-      errors: results.errors.length
+      errors: results.errors.length,
+      mirrorSuccess: results.mirrorSuccess.length,
+      mirrorErrors: results.mirrorErrors.length
     });
 
     return results;
   }
 
-  // 获取照片列表
+  // 获取照片列表（数据来源：仓库清单，支持 EXIF 维度筛选）
   async getPhotos(category, options = {}) {
-    const { page = 1, pageSize = 50, sortBy = 'modifiedTime', sortOrder = 'desc', repoId } = options;
-    
+    const {
+      page = 1,
+      pageSize = 50,
+      sortBy = 'modifiedTime',
+      sortOrder = 'desc',
+      repoId,
+      // Task 6: EXIF 筛选参数
+      dateFrom,
+      dateTo,
+      cameraModel,
+      lensModel,
+      focalMin,
+      focalMax,
+      fNumberMin,
+      fNumberMax,
+      isoMin,
+      isoMax,
+      fileName
+    } = options;
+
     const categoryPath = this.getCategoryPath(category);
-    
+
     try {
       await fs.access(categoryPath);
     } catch {
       return { photos: [], total: 0, page, pageSize };
     }
 
-    const files = await this.scanDirectoryCached(categoryPath);
-    
-    // 只返回当前分类的文件
-    const photos = files
-      .filter(f => f.type === category)
-      .map(f => ({
-        id: Buffer.from(f.path).toString('base64'),
-        name: f.name,
-        filename: getFileNameWithoutExt(f.name),
-        path: f.path,
-        relativePath: path.relative(this.basePath, f.path),
-        type: f.type,
-        extension: f.extension,
-        size: f.size,
-        modifiedTime: f.modifiedTime,
-        thumbnailUrl: `/api/photos/thumbnail?path=${encodeURIComponent(f.path)}`,  // 缩略图
-        url: `/api/photos/preview?path=${encodeURIComponent(f.path)}&repo=${repoId || ''}`  // 原图
-      }));
+    // 确保清单已初始化（首次访问会触发扫描并生成清单）
+    await this.manifest.initFromScan();
+    const allFiles = await this.manifest.getAllFiles();
 
-    // 排序
+    // 过滤出该分类的文件（清单 key 以 `${category}/` 开头）
+    const prefix = `${category}/`;
+    let photos = Object.keys(allFiles)
+      .filter(relPath => relPath.startsWith(prefix))
+      .map(relPath => {
+        const entry = allFiles[relPath];
+        const absolutePath = path.join(this.basePath, relPath);
+        const name = path.basename(absolutePath);
+        const ext = path.extname(name).toLowerCase();
+        return {
+          id: Buffer.from(absolutePath).toString('base64'),
+          name: name,
+          filename: getFileNameWithoutExt(name),
+          path: absolutePath,
+          relativePath: relPath,
+          type: category,
+          extension: ext,
+          size: entry.size,
+          modifiedTime: entry.mtime,
+          thumbnailUrl: `/api/photos/thumbnail?path=${encodeURIComponent(absolutePath)}`,  // 缩略图
+          url: `/api/photos/preview?path=${encodeURIComponent(absolutePath)}&repo=${repoId || ''}`,  // 原图
+          exif: entry.exif  // 字段：取自清单条目，可能为 null
+        };
+      });
+
+    // Task 6: EXIF 维度过滤
+    photos = photos.filter(photo => this._matchFilters(photo, {
+      dateFrom, dateTo, cameraModel, lensModel,
+      focalMin, focalMax, fNumberMin, fNumberMax,
+      isoMin, isoMax, fileName
+    }));
+
+    // 排序（保留原有逻辑：name/size/modifiedTime，asc/desc）
     photos.sort((a, b) => {
       let comparison = 0;
       if (sortBy === 'name') {
@@ -243,6 +439,176 @@ class FileService {
       page,
       pageSize
     };
+  }
+
+  // 判断单张照片是否匹配所有筛选条件（未指定的参数视为不限制）
+  // 若指定了某个 EXIF 维度但 exif=null，该照片不匹配（排除）
+  _matchFilters(photo, filters) {
+    const {
+      dateFrom, dateTo, cameraModel, lensModel,
+      focalMin, focalMax, fNumberMin, fNumberMax,
+      isoMin, isoMax, fileName
+    } = filters;
+
+    // 文件名关键字（不区分大小写）
+    if (fileName) {
+      if (!photo.name || !photo.name.toLowerCase().includes(String(fileName).toLowerCase())) {
+        return false;
+      }
+    }
+
+    // 日期范围：优先用 exif.dateTimeOriginal，回退到 mtime
+    if (dateFrom || dateTo) {
+      const dateStr = (photo.exif && photo.exif.dateTimeOriginal) || photo.modifiedTime;
+      if (!dateStr) return false;
+      // exif.dateTimeOriginal 格式 "2024:03:15 14:30:00"，替换冒号以便 Date 解析
+      const normalized = String(dateStr).replace(/^(\d{4}):(\d{2}):/, '$1-$2-');
+      const date = new Date(normalized);
+      if (isNaN(date.getTime())) return false;
+      if (dateFrom && date < new Date(dateFrom)) return false;
+      if (dateTo && date > new Date(dateTo)) return false;
+    }
+
+    // 相机型号
+    if (cameraModel) {
+      if (!photo.exif || photo.exif.model !== cameraModel) return false;
+    }
+
+    // 镜头型号
+    if (lensModel) {
+      if (!photo.exif || photo.exif.lensModel !== lensModel) return false;
+    }
+
+    // 焦距范围
+    if (focalMin != null || focalMax != null) {
+      if (!photo.exif || photo.exif.focalLength == null) return false;
+      const fl = photo.exif.focalLength;
+      if (focalMin != null && fl < Number(focalMin)) return false;
+      if (focalMax != null && fl > Number(focalMax)) return false;
+    }
+
+    // 光圈范围
+    if (fNumberMin != null || fNumberMax != null) {
+      if (!photo.exif || photo.exif.fNumber == null) return false;
+      const fn = photo.exif.fNumber;
+      if (fNumberMin != null && fn < Number(fNumberMin)) return false;
+      if (fNumberMax != null && fn > Number(fNumberMax)) return false;
+    }
+
+    // ISO 范围
+    if (isoMin != null || isoMax != null) {
+      if (!photo.exif || photo.exif.iso == null) return false;
+      const iso = photo.exif.iso;
+      if (isoMin != null && iso < Number(isoMin)) return false;
+      if (isoMax != null && iso > Number(isoMax)) return false;
+    }
+
+    return true;
+  }
+
+  // 获取筛选选项：返回该分类下所有相机型号与镜头型号（去重，过滤 null）
+  async getFilterOptions(category) {
+    await this.manifest.initFromScan();
+    const allFiles = await this.manifest.getAllFiles();
+    const prefix = `${category}/`;
+
+    const cameraSet = new Set();
+    const lensSet = new Set();
+
+    for (const relPath of Object.keys(allFiles)) {
+      if (!relPath.startsWith(prefix)) continue;
+      const entry = allFiles[relPath];
+      if (entry && entry.exif) {
+        if (entry.exif.model) cameraSet.add(entry.exif.model);
+        if (entry.exif.lensModel) lensSet.add(entry.exif.lensModel);
+      }
+    }
+
+    return {
+      cameraModels: Array.from(cameraSet),
+      lensModels: Array.from(lensSet)
+    };
+  }
+
+  // 完整性校验：检查清单中的文件是否真实存在且哈希匹配，并找出文件系统中未被清单追踪的文件
+  // 返回 { missing: [...], corrupted: [...], untracked: [...] }，每项含 { relPath, path, reason }
+  async verifyIntegrity() {
+    const missing = [];
+    const corrupted = [];
+    const untracked = [];
+
+    // 确保清单存在
+    await this.manifest.initFromScan();
+    const allFiles = await this.manifest.getAllFiles();
+
+    // 1. 遍历清单，检查每个文件的存在性与哈希
+    for (const relPath of Object.keys(allFiles)) {
+      const entry = allFiles[relPath];
+      const absPath = path.join(this.basePath, relPath);
+
+      if (!await fileExists(absPath)) {
+        missing.push({
+          relPath: relPath,
+          path: absPath,
+          reason: 'file_missing'
+        });
+        continue;
+      }
+
+      // 清单中 hash=null 的旧文件只检查存在性，跳过哈希校验
+      if (entry && entry.hash) {
+        try {
+          const currentHash = await computeFileHash(absPath);
+          if (currentHash !== entry.hash) {
+            corrupted.push({
+              relPath: relPath,
+              path: absPath,
+              reason: 'hash_mismatch',
+              expected: entry.hash,
+              actual: currentHash
+            });
+          }
+        } catch (error) {
+          corrupted.push({
+            relPath: relPath,
+            path: absPath,
+            reason: 'hash_compute_failed',
+            error: error.message
+          });
+        }
+      }
+    }
+
+    // 2. 扫描文件系统 jpg/raw/video 目录，找出不在清单中的文件
+    const categories = ['jpg', 'raw', 'video'];
+    for (const category of categories) {
+      const categoryPath = this.getCategoryPath(category);
+      let files = [];
+      try {
+        files = await scanDirectory(categoryPath);
+      } catch (error) {
+        // 目录不存在等，跳过
+        continue;
+      }
+
+      for (const file of files) {
+        const relPath = path.relative(this.basePath, file.path).replace(/\\/g, '/');
+        if (!Object.prototype.hasOwnProperty.call(allFiles, relPath)) {
+          untracked.push({
+            relPath: relPath,
+            path: file.path,
+            reason: 'not_in_manifest'
+          });
+        }
+      }
+    }
+
+    return { missing, corrupted, untracked };
+  }
+
+  // 对比文件系统与清单，返回差异（保留空壳方法以兼容旧调用）
+  async reconcileManifest() {
+    return this.verifyIntegrity();
   }
 
   // 删除照片
@@ -468,6 +834,82 @@ class FileService {
     }
 
     return result;
+  }
+
+  // 批量刷新已有文件的 EXIF：遍历清单中缺少有效 EXIF 的文件，重新读取并更新清单
+  // options: { category = null } 限制只刷新某个分类；返回 { processed, success, failed, alreadyHasExif, noExifFound, sampleExif, firstError }
+  async refreshExif(options = {}) {
+    const { category = null } = options;
+    await this.manifest.initFromScan();
+    const allFiles = await this.manifest.getAllFiles();
+
+    const results = {
+      processed: 0,
+      success: 0,
+      failed: 0,
+      alreadyHasExif: 0,  // 已有有效 EXIF，无需刷新
+      noExifFound: 0,     // 读取后仍无有效 EXIF
+      sampleExif: null,
+      firstError: null
+    };
+
+    const relPaths = Object.keys(allFiles);
+    for (const relPath of relPaths) {
+      // 若指定了分类，只处理该分类
+      if (category) {
+        const prefix = `${category}/`;
+        if (!relPath.startsWith(prefix)) continue;
+      }
+
+      const entry = allFiles[relPath];
+      // 已存在有效 EXIF（至少 model 或 dateTimeOriginal 有值）的跳过
+      if (entry && entry.exif && (entry.exif.model || entry.exif.dateTimeOriginal)) {
+        results.alreadyHasExif++;
+        continue;
+      }
+
+      const absPath = path.join(this.basePath, relPath);
+      if (!await fileExists(absPath)) {
+        results.failed++;
+        if (!results.firstError) results.firstError = `${relPath}: 文件不存在`;
+        continue;
+      }
+
+      results.processed++;
+      try {
+        const exif = await readKeyExif(absPath);
+        console.log(`[refreshExif] ${relPath} 读取结果:`, exif);
+        if (exif && (exif.model || exif.dateTimeOriginal)) {
+          await this.manifest.addEntry(relPath, {
+            hash: entry.hash,
+            size: entry.size,
+            mtime: entry.mtime,
+            exif
+          });
+          results.success++;
+          if (!results.sampleExif) results.sampleExif = exif;
+        } else {
+          // 读取成功但没有关键字段，标记为已处理（exif 为空对象也存进去，避免反复读取）
+          await this.manifest.addEntry(relPath, {
+            hash: entry.hash,
+            size: entry.size,
+            mtime: entry.mtime,
+            exif: exif || {}
+          });
+          results.noExifFound++;
+        }
+      } catch (error) {
+        console.error(`刷新 EXIF 失败: ${absPath}`, error.message);
+        results.failed++;
+        if (!results.firstError) results.firstError = `${relPath}: ${error.message}`;
+      }
+    }
+
+    if (results.processed > 0) {
+      await this.manifest.save();
+    }
+
+    return results;
   }
 }
 

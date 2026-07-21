@@ -9,40 +9,58 @@ const api = axios.create({
 export const photoApi = {
   // 获取照片列表
   getPhotos: (category, params) => api.get('/photos', { params: { category, ...params } }),
-  
+
   // 获取存储信息
   getStorageInfo: (repoId) => api.get('/photos/storage-info', { params: { repoId } }),
-  
+
   // 获取孤立的RAW文件
   getOrphanRaws: (repoId) => api.get('/photos/orphan-raws', { params: { repoId } }),
-  
+
   // 删除照片
   deletePhoto: (id, syncRaw = true, repoId) => api.delete(`/photos/${id}`, { params: { syncRaw, repoId } }),
-  
+
   // 批量删除RAW文件
   batchDeleteRaws: (fileIds, repoId) => api.post('/photos/batch-delete-raws', { fileIds, repoId }),
-  
+
   // 预览图片
   getPreviewUrl: (id) => `/uploads/photos/${id}/preview`,
-  
+
   // 打开文件位置
   openLocation: (filePath, mode) => api.post('/photos/open-location', { filePath, mode }),
-  
+
   // 批量导出照片
-  batchExport: (fileIds, targetPath, repoId) => 
-    api.post('/photos/batch-export', { fileIds, targetPath, repoId })
+  batchExport: (fileIds, targetPath, repoId) =>
+    api.post('/photos/batch-export', { fileIds, targetPath, repoId }),
+
+  // 获取高级筛选项（相机/镜头列表）
+  getFilterOptions: (repoId, category) =>
+    api.get('/photos/filter-options', { params: { repoId, category } }),
+
+  // 获取完整 EXIF 信息
+  getFullExif: (photoId) => api.get(`/photos/${photoId}/exif`),
+
+  // 校验仓库完整性（备用接口）
+  verifyIntegrity: (repoId) => api.post('/photos/verify-integrity', { repoId }),
+
+  // 批量刷新已有文件的 EXIF（补录旧版导入缺失的 EXIF）
+  refreshExif: (repoId, category = 'jpg') =>
+    api.post('/photos/refresh-exif', { repoId, category })
 };
 
 // 导入相关API
 export const importApi = {
   // 从存储卡导入（使用 EventSource 进行实时进度跟踪）
-  importFromCard: (sourcePath, repoId, smartNaming = false) => {
+  importFromCard: (sourcePath, repoId, smartNaming = false, archiveByExif = true, mirrorPath = null) => {
     return new Promise((resolve, reject) => {
       // 构建完整的 URL
       const baseUrl = window.location.origin;
       let url = `${baseUrl}/api/import?sourcePath=${encodeURIComponent(sourcePath)}&repoId=${repoId || ''}`;
       if (smartNaming) {
         url += '&smartNaming=true';
+      }
+      url += `&archiveByExif=${archiveByExif ? 'true' : 'false'}`;
+      if (mirrorPath) {
+        url += `&mirrorPath=${encodeURIComponent(mirrorPath)}`;
       }
       
       console.log('开始 SSE 连接:', url);

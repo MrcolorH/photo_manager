@@ -54,10 +54,11 @@ async function saveRepos(repos) {
 }
 
 // 从存储卡导入照片（支持实时进度，使用 GET 以支持 SSE）
+// 查询参数：sourcePath, repoId, smartNaming, mirrorPath, archiveByExif（默认 'true'）
 router.get('/', async (req, res) => {
   try {
-    const { sourcePath, repoId, smartNaming } = req.query;
-    
+    const { sourcePath, repoId, smartNaming, mirrorPath, archiveByExif = 'true' } = req.query;
+
     if (!sourcePath) {
       // SSE 错误格式
       res.setHeader('Content-Type', 'text/event-stream');
@@ -67,13 +68,13 @@ router.get('/', async (req, res) => {
       res.write(`data: ${JSON.stringify({ type: 'error', error: '请提供存储卡路径' })}\n\n`);
       return res.end();
     }
-    
+
     // 获取目标仓库路径
     const repos = await getRepos();
-    const targetRepo = repoId 
+    const targetRepo = repoId
       ? repos.find(r => r.id === repoId)
       : repos.find(r => r.isDefault) || repos[0];
-    
+
     if (!targetRepo) {
       // SSE 错误格式
       res.setHeader('Content-Type', 'text/event-stream');
@@ -83,28 +84,39 @@ router.get('/', async (req, res) => {
       res.write(`data: ${JSON.stringify({ type: 'error', error: '未找到指定的存储仓库' })}\n\n`);
       return res.end();
     }
-    
+
+    // Task 5.5: 路径校验——镜像盘不能与目标仓库路径相同（用 path.resolve 归一化后比较）
+    if (mirrorPath && path.resolve(mirrorPath) === path.resolve(targetRepo.path)) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.write(`data: ${JSON.stringify({ type: 'error', error: '镜像盘路径不能与目标仓库路径相同' })}\n\n`);
+      return res.end();
+    }
+
     const fileService = new FileService(targetRepo.path);
-    
+
     // 设置 SSE 头部
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    
+
     console.log('开始导入，源路径:', sourcePath);
     console.log('目标仓库:', targetRepo.name);
-    
+    console.log('镜像盘:', mirrorPath || '未设置', '按 EXIF 归档:', archiveByExif);
+
     // 立即发送一个初始消息，确认连接已建立
-    res.write(`data: ${JSON.stringify({ type: 'progress', data: { 
-      total: 0, 
-      processed: 0, 
-      remaining: 0, 
-      currentFile: '正在扫描文件...', 
-      estimatedTimeRemaining: 0, 
-      percentage: 0 
+    res.write(`data: ${JSON.stringify({ type: 'progress', data: {
+      total: 0,
+      processed: 0,
+      remaining: 0,
+      currentFile: '正在扫描文件...',
+      estimatedTimeRemaining: 0,
+      percentage: 0
     }})}\n\n`);
-    
+
     // 进度回调函数
     const progressCallback = (progress) => {
       try {
@@ -115,32 +127,44 @@ router.get('/', async (req, res) => {
         console.error('发送进度失败:', err);
       }
     };
-    
-    // 执行导入
-    const results = await fileService.importFromCard(sourcePath, progressCallback, smartNaming === 'true');
-    
+
+    // 执行导入（传入 archiveByExif 与 mirrorPath）
+    const results = await fileService.importFromCard(
+      sourcePath,
+      progressCallback,
+      smartNaming === 'true',
+      {
+        archiveByExif: archiveByExif === 'true',
+        mirrorPath: mirrorPath || null
+      }
+    );
+
     console.log('导入完成，结果:', {
       jpg: results.jpg.length,
       raw: results.raw.length,
       video: results.video.length,
       errors: results.errors.length,
-      skipped: results.skipped.length
+      skipped: results.skipped.length,
+      mirrorSuccess: results.mirrorSuccess.length,
+      mirrorErrors: results.mirrorErrors.length
     });
-    
-    // 发送最终结果
-    res.write(`data: ${JSON.stringify({ 
-      type: 'complete', 
+
+    // 发送最终结果（包含原有字段 + 新增的镜像统计字段）
+    res.write(`data: ${JSON.stringify({
+      type: 'complete',
       data: {
         jpgCount: results.jpg.length,
         rawCount: results.raw.length,
         videoCount: results.video.length,
         errorCount: results.errors.length,
         skippedCount: results.skipped.length,
+        mirrorSuccessCount: results.mirrorSuccess.length,
+        mirrorErrorCount: results.mirrorErrors.length,
         targetRepo: targetRepo.name,
         details: results
       }
     })}\n\n`);
-    
+
     res.end();
   } catch (error) {
     console.error('导入过程中出错:', error);

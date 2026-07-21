@@ -12,12 +12,17 @@ import {
   Spin,
   Modal,
   message,
+  notification,
   Tooltip,
   Tag,
   Checkbox,
   Dropdown,
   Input,
-  Alert
+  Alert,
+  Switch,
+  InputNumber,
+  DatePicker,
+  Descriptions
 } from 'antd';
 import {
   DeleteOutlined,
@@ -32,7 +37,9 @@ import {
   ExportOutlined,
   CheckSquareOutlined,
   DownloadOutlined,
-  FolderAddOutlined
+  FolderAddOutlined,
+  InfoCircleOutlined,
+  CameraOutlined
 } from '@ant-design/icons';
 import { PhotoSlider } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -84,6 +91,33 @@ const PhotoGallery = () => {
   const [batchDeleteModalVisible, setBatchDeleteModalVisible] = useState(false);
   const [batchSyncDeleteRaw, setBatchSyncDeleteRaw] = useState(false);
 
+  // Task 8：高级筛选相关状态
+  const [advancedFilter, setAdvancedFilter] = useState(false);
+  const [filterOptions, setFilterOptions] = useState({ cameraModels: [], lensModels: [] });
+  // filterState 保存用户输入但尚未应用的筛选值
+  const [filterState, setFilterState] = useState({
+    dateRange: null,
+    cameraModel: undefined,
+    lensModel: undefined,
+    focalMin: undefined,
+    focalMax: undefined,
+    fNumberMin: undefined,
+    fNumberMax: undefined,
+    isoMin: undefined,
+    isoMax: undefined,
+    fileName: ''
+  });
+  // appliedFilter 保存已应用到查询的筛选值（用于标签展示和实际请求）
+  const [appliedFilter, setAppliedFilter] = useState(null);
+
+  // Task 9：EXIF 展示相关状态
+  const [exifModalVisible, setExifModalVisible] = useState(false);
+  const [exifData, setExifData] = useState(null);
+  const [exifLoading, setExifLoading] = useState(false);
+
+  // 批量刷新 EXIF 状态
+  const [refreshingExif, setRefreshingExif] = useState(false);
+
   // 跨页预览缓存
   const [cachedPhotos, setCachedPhotos] = useState([]);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -111,19 +145,103 @@ const PhotoGallery = () => {
     }
   };
 
+  // Task 8.3：获取高级筛选项（相机/镜头列表）
+  const fetchFilterOptions = useCallback(async () => {
+    if (!selectedRepo) return;
+    try {
+      const res = await photoApi.getFilterOptions(selectedRepo, category);
+      if (res.data.success) {
+        setFilterOptions(res.data.data || { cameraModels: [], lensModels: [] });
+      }
+    } catch (error) {
+      console.error('获取筛选项失败:', error);
+    }
+  }, [selectedRepo, category]);
+
+  // Task 8.4：从 filterState 构造后端筛选参数
+  const buildFilterParams = (filter) => {
+    if (!filter) return {};
+    const params = {};
+    if (filter.dateRange && filter.dateRange.length === 2) {
+      const [from, to] = filter.dateRange;
+      if (from) params.dateFrom = from.toISOString();
+      if (to) params.dateTo = to.toISOString();
+    }
+    if (filter.cameraModel) params.cameraModel = filter.cameraModel;
+    if (filter.lensModel) params.lensModel = filter.lensModel;
+    if (filter.focalMin != null) params.focalMin = filter.focalMin;
+    if (filter.focalMax != null) params.focalMax = filter.focalMax;
+    if (filter.fNumberMin != null) params.fNumberMin = filter.fNumberMin;
+    if (filter.fNumberMax != null) params.fNumberMax = filter.fNumberMax;
+    if (filter.isoMin != null) params.isoMin = filter.isoMin;
+    if (filter.isoMax != null) params.isoMax = filter.isoMax;
+    if (filter.fileName && filter.fileName.trim()) params.fileName = filter.fileName.trim();
+    return params;
+  };
+
+  // Task 8.5：计算当前生效的筛选条件（用于标签展示）
+  const activeFilterTags = (() => {
+    if (!appliedFilter) return [];
+    const tags = [];
+    if (appliedFilter.cameraModel) {
+      tags.push({ key: 'cameraModel', label: `相机: ${appliedFilter.cameraModel}` });
+    }
+    if (appliedFilter.lensModel) {
+      tags.push({ key: 'lensModel', label: `镜头: ${appliedFilter.lensModel}` });
+    }
+    if (appliedFilter.dateRange && appliedFilter.dateRange.length === 2) {
+      const [from, to] = appliedFilter.dateRange;
+      tags.push({
+        key: 'dateRange',
+        label: `日期: ${from.format('YYYY-MM-DD')} ~ ${to.format('YYYY-MM-DD')}`
+      });
+    }
+    const focalMin = appliedFilter.focalMin;
+    const focalMax = appliedFilter.focalMax;
+    if (focalMin != null || focalMax != null) {
+      tags.push({
+        key: 'focal',
+        label: `焦距: ${focalMin ?? ''}-${focalMax ?? ''}mm`
+      });
+    }
+    const fNumberMin = appliedFilter.fNumberMin;
+    const fNumberMax = appliedFilter.fNumberMax;
+    if (fNumberMin != null || fNumberMax != null) {
+      tags.push({
+        key: 'fNumber',
+        label: `光圈: f/${fNumberMin ?? ''}-${fNumberMax ?? ''}`
+      });
+    }
+    const isoMin = appliedFilter.isoMin;
+    const isoMax = appliedFilter.isoMax;
+    if (isoMin != null || isoMax != null) {
+      tags.push({
+        key: 'iso',
+        label: `ISO: ${isoMin ?? ''}-${isoMax ?? ''}`
+      });
+    }
+    if (appliedFilter.fileName && appliedFilter.fileName.trim()) {
+      tags.push({ key: 'fileName', label: `文件名: ${appliedFilter.fileName.trim()}` });
+    }
+    return tags;
+  })();
+
   const fetchPhotos = useCallback(async () => {
     if (!selectedRepo) return;
-    
+
     setLoading(true);
     try {
+      // Task 8.4：当 advancedFilter 开启且有 appliedFilter 时，追加筛选参数
+      const advancedParams = (advancedFilter && appliedFilter) ? buildFilterParams(appliedFilter) : {};
       const res = await photoApi.getPhotos(category, {
         page: pagination.page,
         pageSize: pagination.pageSize,
         sortBy,
         sortOrder,
-        repoId: selectedRepo
+        repoId: selectedRepo,
+        ...advancedParams
       });
-      
+
       if (res.data.success) {
         setPhotos(res.data.data.photos);
         setPagination(prev => ({
@@ -137,7 +255,7 @@ const PhotoGallery = () => {
     } finally {
       setLoading(false);
     }
-  }, [category, pagination.page, pagination.pageSize, sortBy, sortOrder, selectedRepo]);
+  }, [category, pagination.page, pagination.pageSize, sortBy, sortOrder, selectedRepo, advancedFilter, appliedFilter]);
 
   useEffect(() => {
     fetchPhotos();
@@ -146,7 +264,14 @@ const PhotoGallery = () => {
   useEffect(() => {
     setCachedPhotos([]);
     cachedPagesRef.current = { min: 0, max: 0 };
-  }, [category, sortBy, sortOrder, selectedRepo]);
+  }, [category, sortBy, sortOrder, selectedRepo, advancedFilter, appliedFilter]);
+
+  // Task 8.3：高级筛选开启或仓库/分类变化时加载相机/镜头选项
+  useEffect(() => {
+    if (advancedFilter) {
+      fetchFilterOptions();
+    }
+  }, [advancedFilter, fetchFilterOptions]);
 
   const handleDelete = (photo) => {
     setDeletePhotoData(photo);
@@ -198,12 +323,15 @@ const PhotoGallery = () => {
   const fetchPagePhotos = useCallback(async (page) => {
     if (!selectedRepo) return [];
     try {
+      // Task 8.4：跨页预览缓存也需要应用高级筛选参数，保持与主页一致
+      const advancedParams = (advancedFilter && appliedFilter) ? buildFilterParams(appliedFilter) : {};
       const res = await photoApi.getPhotos(category, {
         page,
         pageSize: pagination.pageSize,
         sortBy,
         sortOrder,
-        repoId: selectedRepo
+        repoId: selectedRepo,
+        ...advancedParams
       });
       if (res.data.success) {
         return (res.data.data.photos || []).map(photo => ({ ...photo, _page: page }));
@@ -212,7 +340,7 @@ const PhotoGallery = () => {
       console.error(`获取第${page}页照片失败:`, error);
     }
     return [];
-  }, [category, pagination.pageSize, sortBy, sortOrder, selectedRepo]);
+  }, [category, pagination.pageSize, sortBy, sortOrder, selectedRepo, advancedFilter, appliedFilter]);
 
   const loadPreviewPages = useCallback(async (centerPage) => {
     const totalPages = Math.ceil(pagination.total / pagination.pageSize);
@@ -469,12 +597,172 @@ const PhotoGallery = () => {
     return new Date(dateStr).toLocaleString('zh-CN');
   };
 
+  // Task 8.4：应用高级筛选
+  const handleApplyFilter = () => {
+    // 重置到第一页并应用筛选
+    setPagination(prev => ({ ...prev, page: 1 }));
+    setAppliedFilter({ ...filterState });
+    setSelectedPhotos([]);
+    setSelectAll(false);
+  };
+
+  // Task 8.4：重置高级筛选
+  const handleResetFilter = () => {
+    const empty = {
+      dateRange: null,
+      cameraModel: undefined,
+      lensModel: undefined,
+      focalMin: undefined,
+      focalMax: undefined,
+      fNumberMin: undefined,
+      fNumberMax: undefined,
+      isoMin: undefined,
+      isoMax: undefined,
+      fileName: ''
+    };
+    setFilterState(empty);
+    setAppliedFilter(null);
+    setPagination(prev => ({ ...prev, page: 1 }));
+    setSelectedPhotos([]);
+    setSelectAll(false);
+  };
+
+  // Task 8.5：移除单个筛选条件
+  const handleRemoveFilterTag = (key) => {
+    if (!appliedFilter) return;
+    const next = { ...appliedFilter };
+    if (key === 'dateRange') next.dateRange = null;
+    else if (key === 'cameraModel') next.cameraModel = undefined;
+    else if (key === 'lensModel') next.lensModel = undefined;
+    else if (key === 'focal') { next.focalMin = undefined; next.focalMax = undefined; }
+    else if (key === 'fNumber') { next.fNumberMin = undefined; next.fNumberMax = undefined; }
+    else if (key === 'iso') { next.isoMin = undefined; next.isoMax = undefined; }
+    else if (key === 'fileName') next.fileName = '';
+    // 同步到 filterState（避免下次应用时又带回去）
+    setFilterState(prev => ({ ...prev, ...next }));
+    // 判断是否全部清空
+    const isEmpty = !next.dateRange && !next.cameraModel && !next.lensModel &&
+      next.focalMin == null && next.focalMax == null &&
+      next.fNumberMin == null && next.fNumberMax == null &&
+      next.isoMin == null && next.isoMax == null &&
+      !next.fileName;
+    setAppliedFilter(isEmpty ? null : next);
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  // 批量刷新 EXIF：为旧版导入缺失 EXIF 的照片补录
+  const handleRefreshExif = async () => {
+    if (!selectedRepo) return;
+    setRefreshingExif(true);
+    try {
+      const res = await photoApi.refreshExif(selectedRepo, category);
+      if (res.data.success) {
+        const { success, failed, alreadyHasExif, noExifFound, sampleExif, firstError } = res.data.data;
+        console.log('[refreshExif] 返回结果:', res.data.data);
+
+        const total = alreadyHasExif + noExifFound + success + failed;
+        let description;
+        let icon = 'info';
+
+        if (success > 0) {
+          const sample = sampleExif
+            ? `${sampleExif.model || sampleExif.make || '未知相机'} · ${sampleExif.focalLength != null && !isNaN(sampleExif.focalLength) ? sampleExif.focalLength + 'mm' : '-'} · f/${sampleExif.fNumber != null && !isNaN(sampleExif.fNumber) ? sampleExif.fNumber : '-'} · ISO${sampleExif.iso != null && !isNaN(sampleExif.iso) ? sampleExif.iso : '-'}`
+            : null;
+          description = (
+            <div>
+              <div>成功补录 {success} / {total} 张照片的 EXIF</div>
+              {sample && <div style={{ marginTop: 4, opacity: 0.75 }}>样例：{sample}</div>}
+            </div>
+          );
+          icon = 'success';
+        } else if (alreadyHasExif === total) {
+          description = <div>当前 {total} 张照片已包含 EXIF 信息，无需补录</div>;
+        } else if (noExifFound > 0 && failed === 0) {
+          description = <div>共扫描 {total} 张照片，未能从中读取到相机元数据</div>;
+        } else if (failed > 0) {
+          description = (
+            <div>
+              <div>补录失败 {failed} 张</div>
+              {firstError && <div style={{ marginTop: 4, opacity: 0.75 }}>{firstError}</div>}
+            </div>
+          );
+          icon = 'error';
+        } else {
+          description = <div>本次没有需要补录的照片</div>;
+        }
+
+        notification[icon]({
+          message: 'EXIF 补录完成',
+          description,
+          placement: 'topRight',
+          duration: 5
+        });
+
+        fetchPhotos();
+      }
+    } catch (error) {
+      notification.error({
+        message: 'EXIF 补录失败',
+        description: error.response?.data?.error || error.message,
+        placement: 'topRight'
+      });
+      console.error(error);
+    } finally {
+      setRefreshingExif(false);
+    }
+  };
+
+  // Task 9.2：打开 EXIF 面板
+  const handleOpenExif = async () => {
+    const currentPhoto = cachedPhotos[previewIndex];
+    if (!currentPhoto) return;
+    // 优先用列表已携带的精简 EXIF
+    setExifData(currentPhoto.exif ? { ...currentPhoto.exif, _full: false } : null);
+    setExifModalVisible(true);
+  };
+
+  // Task 9.3：加载完整 EXIF
+  const handleLoadFullExif = async () => {
+    const currentPhoto = cachedPhotos[previewIndex];
+    if (!currentPhoto) return;
+    setExifLoading(true);
+    try {
+      const res = await photoApi.getFullExif(currentPhoto.id);
+      if (res.data.success) {
+        // 完整 EXIF 是 tags 对象，合并展示
+        setExifData(prev => ({ ...(prev || {}), ...res.data.data, _full: true }));
+      }
+    } catch (error) {
+      message.error('获取完整 EXIF 失败');
+      console.error(error);
+    } finally {
+      setExifLoading(false);
+    }
+  };
+
+  // Task 9.3：格式化 EXIF 显示值
+  const formatExifValue = (val) => {
+    if (val == null || val === '') return '-';
+    return val;
+  };
+
+  const formatExifDate = (dateStr) => {
+    if (!dateStr) return '-';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return String(dateStr);
+      return d.toLocaleString('zh-CN');
+    } catch (e) {
+      return String(dateStr);
+    }
+  };
+
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 104px)' }}>
       {/* 顶部控制栏 */}
       <div style={{ flexShrink: 0, marginBottom: 16 }}>
-        <Space>
+        <Space wrap>
           <FilterOutlined />
           <Select
             value={selectedRepo}
@@ -501,7 +789,7 @@ const PhotoGallery = () => {
             <Option value="raw">RAW 底片</Option>
             <Option value="video">视频文件</Option>
           </Select>
-          
+
           <Select
             value={sortBy}
             onChange={(val) => { setSortBy(val); setSelectedPhotos([]); setSelectAll(false); }}
@@ -511,7 +799,7 @@ const PhotoGallery = () => {
             <Option value="name">文件名</Option>
             <Option value="size">文件大小</Option>
           </Select>
-          
+
           <Select
             value={sortOrder}
             onChange={(val) => { setSortOrder(val); setSelectedPhotos([]); setSelectAll(false); }}
@@ -520,15 +808,44 @@ const PhotoGallery = () => {
             <Option value="desc">降序</Option>
             <Option value="asc">升序</Option>
           </Select>
+
+          {/* Task 8.1：高级筛选开关 */}
+          <Space size={6}>
+            <Switch
+              checked={advancedFilter}
+              onChange={(checked) => {
+                setAdvancedFilter(checked);
+                // 关闭高级筛选时清空已应用条件，确保恢复全量
+                if (!checked) {
+                  setAppliedFilter(null);
+                  setPagination(prev => ({ ...prev, page: 1 }));
+                }
+              }}
+              size="small"
+            />
+            <span style={{ fontSize: 13, color: 'var(--text)' }}>高级筛选</span>
+          </Space>
         </Space>
 
-        <Space>
+        <Space wrap style={{ marginTop: 12 }}>
           <span style={{ color: 'var(--muted)' }}>共 {pagination.total} 张</span>
           {selectedPhotos.length > 0 && (
             <Tag color="blue" style={{ fontSize: 14, padding: '4px 8px' }}>
               已选中 {selectedPhotos.length} 张
             </Tag>
           )}
+          {/* Task 8.5：当前生效的高级筛选条件标签 */}
+          {activeFilterTags.map(tag => (
+            <Tag
+              key={tag.key}
+              color="geekblue"
+              closable
+              onClose={(e) => { e.preventDefault(); handleRemoveFilterTag(tag.key); }}
+              style={{ fontSize: 12 }}
+            >
+              {tag.label}
+            </Tag>
+          ))}
           <Button
             icon={<ReloadOutlined />}
             onClick={() => {
@@ -540,8 +857,147 @@ const PhotoGallery = () => {
           >
             刷新
           </Button>
+          <Tooltip title="为旧版导入的照片补录 EXIF">
+            <Button
+              icon={<CameraOutlined />}
+              onClick={handleRefreshExif}
+              loading={refreshingExif}
+            >
+              刷新 EXIF
+            </Button>
+          </Tooltip>
         </Space>
       </div>
+
+      {/* Task 8.2：高级筛选表单 */}
+      {advancedFilter && (
+        <Card size="small" style={{ flexShrink: 0, marginBottom: 24 }}>
+          <Row gutter={[16, 12]} align="bottom">
+            <Col xs={24} sm={12} md={8} lg={6} xl={5}>
+              <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--muted)' }}>拍摄日期</div>
+              <DatePicker.RangePicker
+                value={filterState.dateRange}
+                onChange={(dates) => setFilterState(prev => ({ ...prev, dateRange: dates }))}
+                size="small"
+                style={{ width: '100%' }}
+                placeholder={['开始日期', '结束日期']}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6} xl={5}>
+              <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--muted)' }}>相机型号</div>
+              <Select
+                value={filterState.cameraModel}
+                onChange={(val) => setFilterState(prev => ({ ...prev, cameraModel: val }))}
+                allowClear
+                placeholder="选择相机"
+                size="small"
+                style={{ width: '100%' }}
+              >
+                {filterOptions.cameraModels.map(m => (
+                  <Option key={m} value={m}>{m}</Option>
+                ))}
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6} xl={5}>
+              <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--muted)' }}>镜头型号</div>
+              <Select
+                value={filterState.lensModel}
+                onChange={(val) => setFilterState(prev => ({ ...prev, lensModel: val }))}
+                allowClear
+                placeholder="选择镜头"
+                size="small"
+                style={{ width: '100%' }}
+              >
+                {filterOptions.lensModels.map(m => (
+                  <Option key={m} value={m}>{m}</Option>
+                ))}
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6} xl={4}>
+              <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--muted)' }}>焦距 (mm)</div>
+              <Space.Compact style={{ width: '100%' }}>
+                <InputNumber
+                  value={filterState.focalMin}
+                  onChange={(val) => setFilterState(prev => ({ ...prev, focalMin: val }))}
+                  placeholder="最小"
+                  size="small"
+                  style={{ width: '50%' }}
+                  min={0}
+                />
+                <InputNumber
+                  value={filterState.focalMax}
+                  onChange={(val) => setFilterState(prev => ({ ...prev, focalMax: val }))}
+                  placeholder="最大"
+                  size="small"
+                  style={{ width: '50%' }}
+                  min={0}
+                />
+              </Space.Compact>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6} xl={4}>
+              <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--muted)' }}>光圈</div>
+              <Space.Compact style={{ width: '100%' }}>
+                <InputNumber
+                  value={filterState.fNumberMin}
+                  onChange={(val) => setFilterState(prev => ({ ...prev, fNumberMin: val }))}
+                  placeholder="最小"
+                  size="small"
+                  step={0.1}
+                  style={{ width: '50%' }}
+                  min={0}
+                />
+                <InputNumber
+                  value={filterState.fNumberMax}
+                  onChange={(val) => setFilterState(prev => ({ ...prev, fNumberMax: val }))}
+                  placeholder="最大"
+                  size="small"
+                  step={0.1}
+                  style={{ width: '50%' }}
+                  min={0}
+                />
+              </Space.Compact>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6} xl={4}>
+              <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--muted)' }}>ISO</div>
+              <Space.Compact style={{ width: '100%' }}>
+                <InputNumber
+                  value={filterState.isoMin}
+                  onChange={(val) => setFilterState(prev => ({ ...prev, isoMin: val }))}
+                  placeholder="最小"
+                  size="small"
+                  style={{ width: '50%' }}
+                  min={0}
+                />
+                <InputNumber
+                  value={filterState.isoMax}
+                  onChange={(val) => setFilterState(prev => ({ ...prev, isoMax: val }))}
+                  placeholder="最大"
+                  size="small"
+                  style={{ width: '50%' }}
+                  min={0}
+                />
+              </Space.Compact>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6} xl={4}>
+              <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--muted)' }}>文件名</div>
+              <Input
+                value={filterState.fileName}
+                onChange={(e) => setFilterState(prev => ({ ...prev, fileName: e.target.value }))}
+                placeholder="搜索文件名"
+                size="small"
+                style={{ width: '100%' }}
+                allowClear
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6} xl={3}>
+              <Space style={{ width: '100%' }}>
+                <Button type="primary" size="small" onClick={handleApplyFilter} style={{ flex: 1 }}>应用筛选</Button>
+                <Button size="small" onClick={handleResetFilter} style={{ flex: 1 }}>重置</Button>
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      )}
 
       {/* 批量操作栏 */}
       {photos.length > 0 && (
@@ -759,7 +1215,24 @@ const PhotoGallery = () => {
                         description={
                           <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                             <div>{formatFileSize(photo.size)}</div>
-                            <div>{formatDate(photo.modifiedTime)}</div>
+                            <div>{photo.exif?.dateTimeOriginal ? formatExifDate(photo.exif.dateTimeOriginal) : formatDate(photo.modifiedTime)}</div>
+                            {(() => {
+                              const exif = photo.exif;
+                              if (!exif) return null;
+                              const model = exif.model || exif.make;
+                              const focal = exif.focalLength != null && !isNaN(exif.focalLength) ? exif.focalLength : null;
+                              const fNum = exif.fNumber != null && !isNaN(exif.fNumber) ? exif.fNumber : null;
+                              const iso = exif.iso != null && !isNaN(exif.iso) ? exif.iso : null;
+                              if (!model && focal == null && fNum == null && iso == null) return null;
+                              return (
+                                <div style={{ marginTop: 2, fontSize: 10 }}>
+                                  {model && `[${model}] `}
+                                  {focal != null && `${focal}mm `}
+                                  {fNum != null && `f/${fNum} `}
+                                  {iso != null && `ISO${iso}`}
+                                </div>
+                              );
+                            })()}
                           </div>
                         }
                       />
@@ -773,7 +1246,7 @@ const PhotoGallery = () => {
 
       {/* 底部分页 - 固定 */}
       {photos.length > 0 && (
-        <div style={{ flexShrink: 0, marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ flexShrink: 0, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
           <Pagination
             current={pagination.page}
             pageSize={pagination.pageSize}
@@ -931,6 +1404,15 @@ const PhotoGallery = () => {
                 onClick={() => onScale(scale - 0.5)}
                 style={{ color: '#fff' }}
               />
+              {/* Task 9.2：EXIF 信息按钮 */}
+              <Tooltip title="EXIF 信息">
+                <Button
+                  type="text"
+                  icon={<InfoCircleOutlined style={{ fontSize: 20 }} />}
+                  onClick={handleOpenExif}
+                  style={{ color: '#fff' }}
+                />
+              </Tooltip>
               <Button
                 type="text"
                 icon={<DeleteOutlined style={{ fontSize: 20 }} />}
@@ -941,6 +1423,61 @@ const PhotoGallery = () => {
           );
         }}
       />
+
+      {/* Task 9.3：EXIF 信息展示 Modal */}
+      <Modal
+        title="EXIF 信息"
+        open={exifModalVisible}
+        onCancel={() => { setExifModalVisible(false); setExifData(null); }}
+        footer={[
+          <Button
+            key="full"
+            type="primary"
+            loading={exifLoading}
+            onClick={handleLoadFullExif}
+            disabled={!cachedPhotos[previewIndex] || (exifData && exifData._full)}
+          >
+            {(exifData && exifData._full) ? '已加载完整 EXIF' : '查看完整 EXIF'}
+          </Button>,
+          <Button key="close" onClick={() => { setExifModalVisible(false); setExifData(null); }}>
+            关闭
+          </Button>
+        ]}
+        width={600}
+        zIndex={3000}
+      >
+        {exifData ? (
+          <>
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="相机">
+                {[exifData.make, exifData.model].filter(Boolean).join(' ') || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="镜头">{formatExifValue(exifData.lensModel)}</Descriptions.Item>
+              <Descriptions.Item label="焦距">{exifData.focalLength != null ? `${exifData.focalLength}mm` : '-'}</Descriptions.Item>
+              <Descriptions.Item label="光圈">{exifData.fNumber != null ? `f/${exifData.fNumber}` : '-'}</Descriptions.Item>
+              <Descriptions.Item label="快门">{formatExifValue(exifData.exposureTime)}</Descriptions.Item>
+              <Descriptions.Item label="ISO">{formatExifValue(exifData.iso)}</Descriptions.Item>
+              <Descriptions.Item label="拍摄时间">{formatExifDate(exifData.dateTimeOriginal)}</Descriptions.Item>
+              <Descriptions.Item label="GPS">
+                {(exifData.gpsLat != null && exifData.gpsLon != null)
+                  ? `${exifData.gpsLat}, ${exifData.gpsLon}`
+                  : '-'}
+              </Descriptions.Item>
+            </Descriptions>
+            {exifData._full && exifData && Object.keys(exifData).length > 10 && (
+              <Alert
+                message="完整 EXIF 已加载"
+                description="上方展示了精简字段，完整 EXIF tags 已合并到对象中（可在控制台查看 exifData）"
+                type="info"
+                showIcon
+                style={{ marginTop: 12 }}
+              />
+            )}
+          </>
+        ) : (
+          <Empty description="无 EXIF 信息" />
+        )}
+      </Modal>
     </>
   );
 };

@@ -103,7 +103,7 @@ try {
     ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',
     ELECTRON_BUILDER_BINARIES_MIRROR: 'https://npmmirror.com/mirrors/electron-builder-binaries/',
   };
-  execSync('npx electron-builder --win --config electron-builder.yml', {
+  execSync('npx electron-builder --win --config electron-builder.yml --publish never', {
     cwd: ROOT,
     stdio: 'inherit',
     env,
@@ -113,19 +113,20 @@ try {
   process.exit(1);
 }
 
-// Step 6: 清理多余构建产物，只保留安装包
+// Step 6: 清理多余构建产物，只保留安装包与历史存档
 console.log('\n[6/6] 清理构建产物...');
 const pkg = require(path.join(ROOT, 'package.json'));
 const VERSION = pkg.version;
 const distDir = path.join(ROOT, 'dist-electron');
 // NSIS artifactName 在 electron-builder.yml 中定义为 "Shiguang Capsule Setup ${version}.${ext}"
 const setupExe = `Shiguang Capsule Setup ${VERSION}.exe`;
+const keepFiles = new Set([
+  setupExe,
+  setupExe + '.blockmap',
+  'latest.yml',
+  'archive'
+]);
 if (fs.existsSync(distDir)) {
-  const keepFiles = new Set([
-    setupExe,
-    setupExe + '.blockmap',
-    'latest.yml'
-  ]);
   for (const entry of fs.readdirSync(distDir)) {
     if (!keepFiles.has(entry)) {
       const fullPath = path.join(distDir, entry);

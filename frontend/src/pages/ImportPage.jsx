@@ -34,7 +34,8 @@ import {
   DeleteOutlined,
   SettingOutlined,
   DatabaseOutlined,
-  FolderAddOutlined
+  FolderAddOutlined,
+  MinusCircleOutlined
 } from '@ant-design/icons';
 import { importApi } from '../api';
 import { useRepo } from '../contexts/RepoContext';
@@ -70,6 +71,11 @@ const ImportPage = () => {
   const [repoPath, setRepoPath] = useState('');
   const [repoPathSelecting, setRepoPathSelecting] = useState(false);
   const [smartNaming, setSmartNaming] = useState(false);
+  // Task 7.1：导入归档与镜像备份相关状态
+  const [archiveByExif, setArchiveByExif] = useState(true);
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
+  const [mirrorPath, setMirrorPath] = useState('');
+  const [mirrorPathSelecting, setMirrorPathSelecting] = useState(false);
 
   // 当仓库切换时同步到全局上下文
   useEffect(() => {
@@ -216,6 +222,41 @@ const ImportPage = () => {
     }
   };
 
+  // Task 7.2：处理镜像路径的文件夹选择（参考 handleRepoFolderSelect）
+  const handleMirrorFolderSelect = async () => {
+    try {
+      setMirrorPathSelecting(true);
+      message.loading('正在打开文件夹选择对话框...', 0);
+
+      const res = await importApi.selectFolder();
+
+      message.destroy();
+
+      if (res.data.success) {
+        const selectedPath = res.data.data.path;
+        setMirrorPath(selectedPath);
+        message.success('已选择: ' + selectedPath);
+      } else {
+        if (res.data.error !== '用户取消选择') {
+          message.error(res.data.error || '选择失败');
+        }
+      }
+    } catch (error) {
+      message.destroy();
+      console.error('选择文件夹失败:', error);
+      message.error('选择文件夹失败: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setMirrorPathSelecting(false);
+    }
+  };
+
+  // Task 7.3：计算镜像路径是否与主仓库路径冲突
+  const mirrorPathConflict = (() => {
+    if (!mirrorEnabled || !mirrorPath) return false;
+    const selectedRepoObj = repos.find(r => r.id === selectedRepo);
+    return !!(selectedRepoObj && selectedRepoObj.path && mirrorPath === selectedRepoObj.path);
+  })();
+
   const handleImport = async () => {
     if (!sourcePath.trim()) {
       message.error('请输入存储卡路径');
@@ -227,9 +268,18 @@ const ImportPage = () => {
       return;
     }
 
+    // Task 7.3：镜像路径与主仓库路径相同时禁止导入
+    if (mirrorEnabled && mirrorPath) {
+      const selectedRepoObj = repos.find(r => r.id === selectedRepo);
+      if (selectedRepoObj && selectedRepoObj.path && mirrorPath === selectedRepoObj.path) {
+        message.error('镜像路径不能与主仓库路径相同');
+        return;
+      }
+    }
+
     setImporting(true);
     setCurrentStep(1);
-    
+
     // 重置进度信息
     setProgressInfo({
       total: 0,
@@ -245,8 +295,16 @@ const ImportPage = () => {
       importApi.setProgressCallback((progress) => {
         setProgressInfo(progress);
       });
-      
-      const res = await importApi.importFromCard(sourcePath.trim(), selectedRepo, smartNaming);
+
+      // Task 7.4：传入 archiveByExif 和 mirrorPath
+      const effectiveMirrorPath = mirrorEnabled ? mirrorPath.trim() : null;
+      const res = await importApi.importFromCard(
+        sourcePath.trim(),
+        selectedRepo,
+        smartNaming,
+        archiveByExif,
+        effectiveMirrorPath
+      );
       
       if (res.data.success) {
         setImportResult(res.data.data);
@@ -272,6 +330,18 @@ const ImportPage = () => {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Task 7.5：格式化 EXIF 拍摄时间用于文件列表小标签
+  const formatExifDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    } catch (e) {
+      return '';
+    }
   };
 
   const getTotalSize = (files) => {
@@ -417,13 +487,84 @@ const ImportPage = () => {
               </div>
             </div>
 
+            {/* Task 7.2：按 EXIF 时间归档开关 */}
+            <div>
+              <Space>
+                <Switch
+                  checked={archiveByExif}
+                  onChange={setArchiveByExif}
+                  id="archiveByExif"
+                />
+                <label htmlFor="archiveByExif" style={{ fontWeight: 500, cursor: 'pointer' }}>
+                  按 EXIF 时间归档
+                </label>
+              </Space>
+              <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12, lineHeight: 1.8 }}>
+                开启后文件按拍摄时间归档到 category/YYYY/MM/ 子目录；关闭则保持扁平结构
+              </div>
+            </div>
+
+            {/* Task 7.2：镜像备份开关 */}
+            <div>
+              <Space>
+                <Switch
+                  checked={mirrorEnabled}
+                  onChange={(checked) => {
+                    setMirrorEnabled(checked);
+                    if (!checked) setMirrorPath('');
+                  }}
+                  id="mirrorEnabled"
+                />
+                <label htmlFor="mirrorEnabled" style={{ fontWeight: 500, cursor: 'pointer' }}>
+                  镜像备份
+                </label>
+              </Space>
+              <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12, lineHeight: 1.8 }}>
+                开启后，导入的同时将文件镜像复制到独立的备份目录
+              </div>
+
+              {/* 镜像路径输入区 */}
+              {mirrorEnabled && (
+                <div style={{ marginTop: 8 }}>
+                  <Space.Compact style={{ width: '100%', maxWidth: 500 }}>
+                    <Input
+                      placeholder="选择或输入镜像备份目标根路径"
+                      value={mirrorPath}
+                      onChange={(e) => setMirrorPath(e.target.value)}
+                      size="large"
+                      prefix={<FolderOpenOutlined />}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      icon={<FolderAddOutlined />}
+                      onClick={handleMirrorFolderSelect}
+                      size="large"
+                      loading={mirrorPathSelecting}
+                    >
+                      选择文件夹
+                    </Button>
+                  </Space.Compact>
+                  {/* Task 7.3：路径冲突警告 */}
+                  {mirrorPathConflict && (
+                    <Alert
+                      message="镜像路径不能与主仓库路径相同"
+                      description="请选择一个与主仓库不同的目录作为镜像备份目标"
+                      type="warning"
+                      showIcon
+                      style={{ marginTop: 8, maxWidth: 500 }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
             <Button
               type="primary"
               size="large"
               icon={<ImportOutlined />}
               onClick={handleImport}
               loading={importing}
-              disabled={!sourcePath.trim() || !selectedRepo}
+              disabled={!sourcePath.trim() || !selectedRepo || mirrorPathConflict}
             >
               开始导入
             </Button>
@@ -655,6 +796,53 @@ const ImportPage = () => {
             </Col>
           </Row>
 
+          {/* Task 7.5：去重跳过 & 镜像统计行 */}
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col span={(importResult.mirrorSuccessCount || 0) + (importResult.mirrorErrorCount || 0) > 0 ? 12 : 24}>
+              <Card>
+                <Statistic
+                  title="去重跳过（哈希重复）"
+                  value={importResult.skippedCount || 0}
+                  prefix={<MinusCircleOutlined style={{ color: 'var(--muted)' }} />}
+                  suffix="个"
+                />
+                <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
+                  已存在于目标仓库，未进行覆盖
+                </div>
+              </Card>
+            </Col>
+            {(importResult.mirrorSuccessCount || 0) + (importResult.mirrorErrorCount || 0) > 0 && (
+              <Col span={12}>
+                <Card>
+                  <Statistic
+                    title="镜像备份"
+                    value={importResult.mirrorSuccessCount || 0}
+                    prefix={<DatabaseOutlined style={{ color: 'var(--accent)' }} />}
+                    suffix={`/ 失败 ${importResult.mirrorErrorCount || 0}`}
+                  />
+                  <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
+                    成功 / 失败数
+                  </div>
+                </Card>
+              </Col>
+            )}
+          </Row>
+
+          {/* Task 7.5：镜像失败 Alert */}
+          {(importResult.mirrorErrorCount || 0) > 0 && (
+            <Alert
+              message={`镜像备份失败 ${importResult.mirrorErrorCount} 个文件`}
+              description={
+                importResult.details && importResult.details.mirrorErrors && importResult.details.mirrorErrors.length > 0
+                  ? `失败文件: ${importResult.details.mirrorErrors.slice(0, 5).map(e => e.file || e.name).join(', ')}${importResult.details.mirrorErrors.length > 5 ? ' 等' : ''}`
+                  : '请查看日志了解失败详情'
+              }
+              type="warning"
+              showIcon
+              style={{ marginBottom: 24 }}
+            />
+          )}
+
           {importResult.skippedCount > 0 && (
             <Alert
               message={`${importResult.skippedCount} 个文件已存在并被跳过`}
@@ -696,12 +884,28 @@ const ImportPage = () => {
                 size="small"
                 bordered
                 dataSource={importResult.details.skipped}
-                renderItem={item => (
-                  <List.Item>
-                    <Tag color="default">跳过</Tag>
-                    {item.name} - {item.reason === 'already_exists' ? '文件已存在' : item.reason}
-                  </List.Item>
-                )}
+                renderItem={item => {
+                  // Task 7.5：跳过项若有 EXIF 拍摄时间也展示小标签
+                  const exifDate = item.exif && item.exif.dateTimeOriginal ? formatExifDate(item.exif.dateTimeOriginal) : '';
+                  return (
+                    <List.Item>
+                      <Space size={4} wrap>
+                        <Tag color="default">跳过</Tag>
+                        {item.name}
+                        {item.reason && (
+                          <span style={{ color: 'var(--muted)', fontSize: 12 }}>
+                            - {item.reason === 'already_exists' ? '文件已存在' : item.reason === 'duplicate_hash' ? '哈希重复' : item.reason}
+                          </span>
+                        )}
+                        {exifDate && (
+                          <Tag color="purple" style={{ fontSize: 11 }}>
+                            {exifDate}
+                          </Tag>
+                        )}
+                      </Space>
+                    </List.Item>
+                  );
+                }}
                 style={{ maxHeight: 200, overflow: 'auto', marginBottom: 16 }}
               />
             </>

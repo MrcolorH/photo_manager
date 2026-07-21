@@ -3,6 +3,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs').promises;
 const FileService = require('../services/fileService');
+const { readFullExif } = require('../services/exifService');
 
 // 存储仓库配置文件路径 - 与 app.js / importRoutes.js 保持一致
 const CONFIG_DIR = process.env.CONFIG_DIR || path.join(__dirname, '..', '..', '..', 'config');
@@ -48,20 +49,51 @@ async function getFileService(repoId) {
   return new FileService(repo.path);
 }
 
-// 获取照片列表
+// 获取照片列表（支持 EXIF 多维筛选）
 router.get('/', async (req, res) => {
   try {
-    const { category = 'jpg', page = 1, pageSize = 50, sortBy = 'modifiedTime', sortOrder = 'desc', repoId } = req.query;
-    
+    const {
+      category = 'jpg',
+      page = 1,
+      pageSize = 50,
+      sortBy = 'modifiedTime',
+      sortOrder = 'desc',
+      repoId,
+      // Task 6: EXIF 筛选参数
+      dateFrom,
+      dateTo,
+      cameraModel,
+      lensModel,
+      focalMin,
+      focalMax,
+      fNumberMin,
+      fNumberMax,
+      isoMin,
+      isoMax,
+      fileName
+    } = req.query;
+
     const fileService = await getFileService(repoId);
     const result = await fileService.getPhotos(category, {
       page: parseInt(page),
       pageSize: parseInt(pageSize),
       sortBy,
       sortOrder,
-      repoId  // 传递 repoId 给 fileService
+      repoId,  // 传递 repoId 给 fileService
+      // 传递 EXIF 筛选参数（数值类型做转换，未提供时为 undefined）
+      dateFrom,
+      dateTo,
+      cameraModel,
+      lensModel,
+      focalMin: focalMin != null && focalMin !== '' ? Number(focalMin) : undefined,
+      focalMax: focalMax != null && focalMax !== '' ? Number(focalMax) : undefined,
+      fNumberMin: fNumberMin != null && fNumberMin !== '' ? Number(fNumberMin) : undefined,
+      fNumberMax: fNumberMax != null && fNumberMax !== '' ? Number(fNumberMax) : undefined,
+      isoMin: isoMin != null && isoMin !== '' ? Number(isoMin) : undefined,
+      isoMax: isoMax != null && isoMax !== '' ? Number(isoMax) : undefined,
+      fileName
     });
-    
+
     res.json({
       success: true,
       data: result
@@ -135,22 +167,62 @@ router.delete('/:id', async (req, res) => {
 router.post('/batch-delete-raws', async (req, res) => {
   try {
     const { fileIds, repoId } = req.body;
-    
+
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
       return res.status(400).json({
         success: false,
         error: '请提供要删除的文件ID列表'
       });
     }
-    
+
     const fileService = await getFileService(repoId);
     const result = await fileService.deleteRawFiles(fileIds);
-    
+
     res.json({
       success: true,
       data: result
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 批量刷新已有文件的 EXIF（补录旧版导入缺失的 EXIF）
+router.post('/refresh-exif', async (req, res) => {
+  try {
+    const { repoId, category = 'jpg' } = req.body || {};
+    const fileService = await getFileService(repoId);
+    const result = await fileService.refreshExif({ category });
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('刷新 EXIF 失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 完整性校验：检查清单与文件系统的一致性（缺失/损坏/未追踪）
+router.post('/verify-integrity', async (req, res) => {
+  try {
+    const { repoId } = req.body || {};
+    const fileService = await getFileService(repoId);
+    const result = await fileService.verifyIntegrity();
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('完整性校验失败:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -348,13 +420,64 @@ router.get('/thumbnail', async (req, res) => {
   }
 });
 
+// 获取筛选选项（相机型号、镜头型号列表）
+// 注意：必须放在 GET /:id/preview 之前，否则 "filter-options" 会被 :id 匹配
+router.get('/filter-options', async (req, res) => {
+  try {
+    const { repoId, category = 'jpg' } = req.query;
+    const fileService = await getFileService(repoId);
+    const options = await fileService.getFilterOptions(category);
+
+    res.json({
+      success: true,
+      data: options
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // 预览图片（使用 base64 ID）
 router.get('/:id/preview', async (req, res) => {
   try {
     const { id } = req.params;
     const filePath = Buffer.from(id, 'base64').toString('utf8');
-    
+
     res.sendFile(filePath);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 获取照片的完整 EXIF 信息（供详情面板使用）
+// id 为 base64 编码的文件绝对路径
+router.get('/:id/exif', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const filePath = Buffer.from(id, 'base64').toString('utf8');
+
+    // 检查文件是否存在
+    try {
+      await fs.access(filePath);
+    } catch {
+      return res.status(404).json({
+        success: false,
+        error: '文件不存在'
+      });
+    }
+
+    const tags = await readFullExif(filePath);
+
+    res.json({
+      success: true,
+      data: tags
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -434,34 +557,51 @@ router.post('/open-location', async (req, res) => {
       });
     }
     
-    const { exec } = require('child_process');
-    const util = require('util');
-    const execPromise = util.promisify(exec);
+    const { spawn, execFile } = require('child_process');
     const platform = process.platform;
-    
-    let command;
+
     if (mode === 'folder') {
-      // 打开文件夹
+      // 打开文件所在文件夹
       const folderPath = path.dirname(decodedPath);
       if (platform === 'darwin') {
-        command = `open "${folderPath}"`;
+        spawn('open', [folderPath], { stdio: 'ignore' });
       } else if (platform === 'win32') {
-        command = `explorer "${folderPath}"`;
+        // 用 PowerShell 调用 explorer，再查找并置顶其窗口，避免黑窗且确保前台聚焦
+        const escaped = folderPath.replace(/'/g, "''");
+        const psCmd = `$p = Start-Process -FilePath 'explorer.exe' -ArgumentList '/n,\"${escaped}\"' -PassThru; Start-Sleep -Milliseconds 600; $w = Get-Process -Id $p.Id -ErrorAction SilentlyContinue; if ($w) { Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class W { [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int n); }' -ErrorAction SilentlyContinue; [W]::ShowWindow($w.MainWindowHandle, 9) | Out-Null; [W]::SetForegroundWindow($w.MainWindowHandle) | Out-Null }`;
+        execFile('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', psCmd], {
+          windowsHide: true,
+          stdio: 'ignore'
+        }, (err) => {
+          if (err) {
+            // 兜底：PowerShell 不可用时回退到 explorer 直接启动
+            spawn('explorer', ['/n,', folderPath], { shell: false, stdio: 'ignore', detached: true, windowsHide: true });
+          }
+        });
       } else {
-        command = `xdg-open "${folderPath}"`;
+        spawn('xdg-open', [folderPath], { stdio: 'ignore' });
       }
     } else {
-      // 打开文件
+      // 打开文件本体：使用系统默认程序
       if (platform === 'darwin') {
-        command = `open "${decodedPath}"`;
+        spawn('open', [decodedPath], { stdio: 'ignore' });
       } else if (platform === 'win32') {
-        command = `start "" "${decodedPath}"`;
+        // 用 PowerShell Start-Process 调用系统默认程序，避免 cmd 黑窗
+        const escaped = decodedPath.replace(/'/g, "''");
+        const psCmd = `Start-Process -FilePath '${escaped}'`;
+        execFile('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', psCmd], {
+          windowsHide: true,
+          stdio: 'ignore'
+        }, (err) => {
+          if (err) {
+            // 兜底：回退到 cmd /c start
+            spawn('cmd', ['/c', 'start', '""', decodedPath], { shell: true, stdio: 'ignore', detached: true, windowsHide: true });
+          }
+        });
       } else {
-        command = `xdg-open "${decodedPath}"`;
+        spawn('xdg-open', [decodedPath], { stdio: 'ignore' });
       }
     }
-    
-    await execPromise(command);
     
     res.json({
       success: true,
