@@ -13,6 +13,8 @@ class ManifestService {
     this._cache = null;
     this._cacheTime = 0;
     this._cacheTTL = 30000; // 30 秒内存缓存
+    // hash 反向索引：hash -> relPath，用于 O(1) 去重查找
+    this._hashIndex = null;
   }
 
   // 将相对路径统一转为 forward slash（Windows 上 path.relative 返回 backslash）
@@ -56,6 +58,15 @@ class ManifestService {
 
     this._cache = manifest;
     this._cacheTime = Date.now();
+    // 构建 hash 反向索引（hash -> relPath），用于 O(1) 去重
+    this._hashIndex = new Map();
+    if (manifest.files) {
+      for (const [relPath, entry] of Object.entries(manifest.files)) {
+        if (entry && entry.hash) {
+          this._hashIndex.set(entry.hash, relPath);
+        }
+      }
+    }
     return manifest;
   }
 
@@ -75,6 +86,7 @@ class ManifestService {
     // 清空缓存，下次 load 会重新读盘
     this._cache = null;
     this._cacheTime = 0;
+    this._hashIndex = null;
   }
 
   // 返回该相对路径的条目，不存在返回 undefined
@@ -88,12 +100,19 @@ class ManifestService {
   async addEntry(relPath, data) {
     const key = this._normalizeRelPath(relPath);
     const manifest = await this.load();
+    // 维护 hash 反向索引：先清旧条目的映射，再加新 hash
+    if (this._hashIndex && manifest.files[key] && manifest.files[key].hash) {
+      this._hashIndex.delete(manifest.files[key].hash);
+    }
     manifest.files[key] = {
       hash: data.hash,
       size: data.size,
       mtime: data.mtime,
       exif: data.exif
     };
+    if (this._hashIndex && data.hash) {
+      this._hashIndex.set(data.hash, key);
+    }
     return manifest.files[key];
   }
 
@@ -102,21 +121,24 @@ class ManifestService {
     const key = this._normalizeRelPath(relPath);
     const manifest = await this.load();
     if (Object.prototype.hasOwnProperty.call(manifest.files, key)) {
+      // 维护 hash 反向索引
+      if (this._hashIndex && manifest.files[key] && manifest.files[key].hash) {
+        this._hashIndex.delete(manifest.files[key].hash);
+      }
       delete manifest.files[key];
       return true;
     }
     return false;
   }
 
-  // 按 hash 查找第一个匹配条目，返回 { relPath, ...entry } 或 null
+  // 按 hash 查找匹配条目，返回 { relPath, ...entry } 或 null
+  // 使用 hash 反向索引实现 O(1) 查找
   async findByHash(hash) {
     const manifest = await this.load();
-    const files = manifest.files;
-    for (const relPath of Object.keys(files)) {
-      const entry = files[relPath];
-      if (entry && entry.hash === hash) {
-        return { relPath, ...entry };
-      }
+    if (this._hashIndex && this._hashIndex.has(hash)) {
+      const relPath = this._hashIndex.get(hash);
+      const entry = manifest.files[relPath];
+      if (entry) return { relPath, ...entry };
     }
     return null;
   }
@@ -168,6 +190,17 @@ class ManifestService {
   invalidateCache() {
     this._cache = null;
     this._cacheTime = 0;
+    this._hashIndex = null;
+  }
+
+  // 删除清单文件（用于重建清单）
+  async deleteManifest() {
+    this.invalidateCache();
+    try {
+      await fs.unlink(this.manifestPath);
+    } catch {
+      // 文件不存在也没关系
+    }
   }
 }
 

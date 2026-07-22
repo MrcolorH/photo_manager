@@ -79,17 +79,74 @@ if (!process.env.CUSTOM_DMGBUILD_PATH) {
   console.log('✅ 使用外部 CUSTOM_DMGBUILD_PATH: ' + process.env.CUSTOM_DMGBUILD_PATH);
 }
 
+// 清除可能干扰 dmgbuild 内嵌 Python 的环境变量
+// dmgbuild bundle 自带 Python，外部的 PYTHONHOME/PYTHONPATH 会破坏其标准库查找
+// 导致 "Fatal Python error: Failed to import encodings module"
+if (process.env.PYTHONHOME) {
+  console.log('⚠️  检测到外部 PYTHONHOME，已清除以避免干扰 dmgbuild 内嵌 Python');
+  delete process.env.PYTHONHOME;
+}
+
 // Step 5: 打包 Electron 应用
-console.log('\n[5/6] 打包 Electron 应用...');
+console.log('\n[5/7] 打包 Electron 应用...');
 try {
   run('npx electron-builder --mac --config electron-builder.yml', ROOT);
 } catch (e) {
-  console.error('❌ Electron 打包失败:', e.message);
-  process.exit(1);
+  console.warn('⚠️  Electron 打包过程出错（dmgbuild 可能被沙箱阻断），将尝试用 hdiutil 生成 DMG');
+  console.warn('   错误详情:', e.message);
 }
 
-// Step 6: 清理多余构建产物，只保留 DMG
-console.log('\n[6/6] 清理构建产物...');
+// Step 6: 如果 electron-builder 未生成 DMG（或失败），用 hdiutil 生成标准可拖拽安装 DMG
+console.log('\n[6/7] 检查并生成标准 DMG 安装包...');
+const version = require('../package.json').version;
+const dmgTargets = [
+  { archDir: 'mac', suffix: '' },
+  { archDir: 'mac-arm64', suffix: '-arm64' }
+];
+for (const { archDir, suffix } of dmgTargets) {
+  const dmgName = `Shiguang Capsule-${version}${suffix}.dmg`;
+  const dmgPath = path.join(DIST_ELECTRON, dmgName);
+  // 已存在则跳过
+  if (fs.existsSync(dmgPath)) {
+    console.log(`✅ ${dmgName} 已存在，跳过`);
+    continue;
+  }
+  const appPath = path.join(DIST_ELECTRON, archDir, '拾光舱.app');
+  if (!fs.existsSync(appPath)) {
+    console.warn(`⚠️  未找到 ${archDir}/拾光舱.app，跳过 ${dmgName}`);
+    continue;
+  }
+  // 补 ad-hoc 签名（确保未签名的 .app 能被 Gatekeeper 放行）
+  console.log(`  补 ad-hoc 签名: ${appPath}`);
+  try {
+    run(`codesign --force --deep --sign - "${appPath}"`);
+  } catch (e) {
+    console.warn('  ⚠️  签名失败，继续生成 DMG:', e.message);
+  }
+  // 不复制 .app（fs.cpSync 会破坏 Electron Framework 的符号链接结构）
+  // 直接在 .app 所在目录临时创建 Applications 链接，从该目录创建 DMG
+  // 这样 .app 内部的相对路径符号链接保持不变
+  const archDirPath = path.join(DIST_ELECTRON, archDir);
+  const appsLink = path.join(archDirPath, 'Applications');
+  try {
+    fs.symlinkSync('/Applications', appsLink);
+  } catch (e) {
+    // 已存在则忽略
+  }
+  console.log(`  生成 DMG: ${dmgName}`);
+  try {
+    run(`hdiutil create -volname "拾光舱" -srcfolder "${archDirPath}" -ov -format UDZO -fs HFS+ "${dmgPath}"`);
+    console.log(`✅ ${dmgName} 生成完成`);
+  } catch (e) {
+    console.error(`❌ 生成 ${dmgName} 失败:`, e.message);
+  } finally {
+    // 清理临时 Applications 链接
+    try { fs.unlinkSync(appsLink); } catch (e) { /* ignore */ }
+  }
+}
+
+// Step 7: 清理多余构建产物，只保留 DMG
+console.log('\n[7/7] 清理构建产物...');
 if (fs.existsSync(DIST_ELECTRON)) {
   const keepPatterns = ['.dmg', '.dmg.blockmap', 'latest-mac.yml'];
   for (const entry of fs.readdirSync(DIST_ELECTRON)) {

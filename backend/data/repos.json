@@ -15,6 +15,12 @@
     "id": "1776418196306",
     "name": "fuji",
     "path": "/Users/colorh/Pictures/富士/",
+    "isDefault": false
+  },
+  {
+    "id": "1784702910512",
+    "name": "相机照片",
+    "path": "/Volumes/Samsung USB/photo/",
     "isDefault": true
   }
 ]

@@ -4,6 +4,19 @@ const { scanDirectory, ensureDir, copyFile, deleteFile, getFileNameWithoutExt, f
 const ManifestService = require('./manifestService');
 const { readKeyExif } = require('./exifService');
 
+// 有限并发执行：对 items 数组每个元素执行 async fn，并发度 concurrency
+async function runWithConcurrency(items, concurrency, asyncFn) {
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      await asyncFn(items[i], i);
+    }
+  }
+  const workers = Array(Math.min(concurrency, items.length)).fill(0).map(worker);
+  await Promise.all(workers);
+}
+
 class FileService {
   constructor(basePath) {
     this.basePath = basePath;
@@ -92,9 +105,9 @@ class FileService {
   }
 
   // 从存储卡导入照片（增量导入，支持哈希去重、EXIF 读取、按 EXIF 时间归档、双盘镜像）
-  // options: { archiveByExif = true, mirrorPath = null }
+  // options: { archiveByExif = false, mirrorPath = null }
   async importFromCard(sourcePath, progressCallback = null, smartNaming = false, options = {}) {
-    const { archiveByExif = true, mirrorPath = null } = options;
+    const { archiveByExif = false, mirrorPath = null } = options;
 
     console.log('开始扫描目录:', sourcePath);
     console.log('归档策略 archiveByExif:', archiveByExif, '镜像盘 mirrorPath:', mirrorPath || '无');
@@ -191,10 +204,9 @@ class FileService {
       return candidate;
     };
 
-    // 按类型分类处理文件
-    for (const file of files) {
-      console.log(`处理文件 ${processedFiles + 1}/${totalFiles}: ${file.name}`);
-
+    // 按类型分类处理文件（并发，IO 密集型，并发度 8）
+    const IMPORT_CONCURRENCY = 8;
+    await runWithConcurrency(files, IMPORT_CONCURRENCY, async (file) => {
       try {
         // 1. 计算 SHA-256 哈希
         const hash = await computeFileHash(file.path);
@@ -210,7 +222,6 @@ class FileService {
             hash: hash,
             existingRelPath: existed.relPath
           });
-          console.log(`  哈希命中清单，跳过: ${file.name} -> ${existed.relPath}`);
         } else {
           // 3. 未命中：确定归档相对路径（基于 smartNaming 后的最终文件名）
           const targetFileName = getSmartName(file);
@@ -221,7 +232,6 @@ class FileService {
           try {
             exif = await readKeyExif(file.path);
           } catch (e) {
-            // readKeyExif 内部已捕获异常返回 null，这里兜底
             console.error(`  读取 EXIF 异常: ${file.name}`, e.message);
           }
 
@@ -233,43 +243,77 @@ class FileService {
             archiveByExif
           );
 
-          // 4. 检查目标路径是否已存在：若存在且哈希不同，自动重命名
+          // 4. 检查目标路径是否已存在
           const targetPath = path.join(this.basePath, relPath);
-          const finalTargetPath = await resolveAvailablePath(targetPath);
-          const finalRelPath = path.relative(this.basePath, finalTargetPath).replace(/\\/g, '/');
 
-          // 5. 复制文件到主仓库
-          const copyResult = await copyFile(file.path, finalTargetPath);
+          // 兜底去重：若目标路径已存在，比对哈希判断是否为相同内容
+          let isDuplicateAtTarget = false;
+          if (await fileExists(targetPath)) {
+            try {
+              const existingHash = await computeFileHash(targetPath);
+              if (existingHash === hash) {
+                isDuplicateAtTarget = true;
+              }
+            } catch (e) {
+              console.error(`  计算已存在文件哈希失败: ${targetPath}`, e.message);
+            }
+          }
 
-          if (copyResult.skipped) {
-            // 文件已存在（理论上前面已重命名避免冲突，这里仍兜底处理）
+          if (isDuplicateAtTarget) {
             results.skipped.push({
               originalPath: file.path,
-              newPath: copyResult.path,
+              newPath: targetPath,
               name: smartNaming ? targetFileName : file.name,
               size: file.size,
-              reason: copyResult.reason || 'already_exists'
+              reason: 'duplicate_hash',
+              hash: hash,
+              existingRelPath: relPath
             });
-            console.log(`  文件已存在，跳过: ${file.name}`);
+            // 补全清单条目（若之前 hash 为 null 或不存在），后续可正常去重
+            const existingEntry = await this.manifest.getEntry(relPath);
+            if (!existingEntry || !existingEntry.hash) {
+              await this.manifest.addEntry(relPath, {
+                hash: hash,
+                size: file.size,
+                mtime: mtimeIso,
+                exif: exif
+              });
+            }
           } else {
-            // 6. 文件成功复制，记录到清单
-            await this.manifest.addEntry(finalRelPath, {
-              hash: hash,
-              size: file.size,
-              mtime: mtimeIso,
-              exif: exif
-            });
+            // 5. 目标路径不存在或内容不同：自动重命名避免覆盖，再复制
+            const finalTargetPath = await resolveAvailablePath(targetPath);
+            const finalRelPath = path.relative(this.basePath, finalTargetPath).replace(/\\/g, '/');
 
-            results[file.type].push({
-              originalPath: file.path,
-              newPath: copyResult.path,
-              relPath: finalRelPath,
-              name: smartNaming ? targetFileName : file.name,
-              size: file.size,
-              hash: hash,
-              exif: exif
-            });
-            console.log(`  文件复制成功: ${file.name} -> ${finalRelPath}`);
+            // 6. 复制文件到主仓库
+            const copyResult = await copyFile(file.path, finalTargetPath);
+
+            if (copyResult.skipped) {
+              results.skipped.push({
+                originalPath: file.path,
+                newPath: copyResult.path,
+                name: smartNaming ? targetFileName : file.name,
+                size: file.size,
+                reason: copyResult.reason || 'already_exists'
+              });
+            } else {
+              // 7. 文件成功复制，记录到清单
+              await this.manifest.addEntry(finalRelPath, {
+                hash: hash,
+                size: file.size,
+                mtime: mtimeIso,
+                exif: exif
+              });
+
+              results[file.type].push({
+                originalPath: file.path,
+                newPath: copyResult.path,
+                relPath: finalRelPath,
+                name: smartNaming ? targetFileName : file.name,
+                size: file.size,
+                hash: hash,
+                exif: exif
+              });
+            }
           }
         }
       } catch (error) {
@@ -280,13 +324,13 @@ class FileService {
         console.error(`  文件处理失败: ${file.name}`, error.message);
       }
 
-      // 更新进度
+      // 更新进度（processedFiles++ 在单线程下是原子的）
       processedFiles++;
       if (progressCallback) {
-        const elapsedTime = (Date.now() - startTime) / 1000; // 秒
+        const elapsedTime = (Date.now() - startTime) / 1000;
         const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
         const remainingFiles = totalFiles - processedFiles;
-        const estimatedTimeRemaining = avgTimePerFile * remainingFiles; // 秒
+        const estimatedTimeRemaining = avgTimePerFile * remainingFiles;
 
         progressCallback({
           total: totalFiles,
@@ -297,12 +341,12 @@ class FileService {
           percentage: Math.round((processedFiles / totalFiles) * 100)
         });
       }
-    }
+    });
 
     // 统一保存清单
     await this.manifest.save();
 
-    // Task 5: 双盘镜像（主导入完成后，若提供 mirrorPath，复制成功导入的文件到镜像盘）
+    // Task 5: 双盘镜像（主导入完成后，若提供 mirrorPath，并发复制到镜像盘）
     if (mirrorPath) {
       const allImported = [
         ...results.jpg,
@@ -310,13 +354,11 @@ class FileService {
         ...results.video
       ];
 
-      for (const item of allImported) {
+      await runWithConcurrency(allImported, IMPORT_CONCURRENCY, async (item) => {
         try {
-          if (!item.relPath) continue;
+          if (!item.relPath) return;
           const mirrorTarget = path.join(mirrorPath, item.relPath);
-          // 先确保镜像目录存在
           await ensureDir(path.dirname(mirrorTarget));
-          // 复制到镜像盘（不使用 copyFile 的 isSameFile 逻辑，直接 fs.copyFile 即可，避免误判跳过）
           await fs.copyFile(item.newPath, mirrorTarget);
           results.mirrorSuccess.push({
             originalPath: item.originalPath,
@@ -333,7 +375,7 @@ class FileService {
           });
           console.error(`  镜像失败: ${item.newPath}`, error.message);
         }
-      }
+      });
     }
 
     console.log('导入完成:', {
@@ -878,7 +920,6 @@ class FileService {
       results.processed++;
       try {
         const exif = await readKeyExif(absPath);
-        console.log(`[refreshExif] ${relPath} 读取结果:`, exif);
         if (exif && (exif.model || exif.dateTimeOriginal)) {
           await this.manifest.addEntry(relPath, {
             hash: entry.hash,
@@ -910,6 +951,69 @@ class FileService {
     }
 
     return results;
+  }
+
+  // 重建清单：删除旧清单→重新扫描全部文件→并发读取 EXIF→写入新清单
+  // 用于修复路径失效、EXIF 缺失等问题
+  async rebuildManifest() {
+    // 1. 删除旧清单
+    await this.manifest.deleteManifest();
+
+    // 2. 重新扫描所有分类目录
+    const categories = ['jpg', 'raw', 'video'];
+    const allScannedFiles = [];
+    for (const category of categories) {
+      const categoryPath = this.getCategoryPath(category);
+      let files = [];
+      try {
+        files = await scanDirectory(categoryPath);
+      } catch (error) {
+        console.error(`扫描分类目录失败: ${categoryPath}`, error.message);
+        continue;
+      }
+      for (const file of files) {
+        const relPath = this.manifest._normalizeRelPath(path.relative(this.basePath, file.path));
+        allScannedFiles.push({ relPath, file, category });
+      }
+    }
+
+    // 3. 并发写入清单条目，同时读取 EXIF（仅 jpg/raw）
+    const EXIF_CONCURRENCY = 6;
+    let exifSuccess = 0;
+    let exifFailed = 0;
+    await runWithConcurrency(allScannedFiles, EXIF_CONCURRENCY, async ({ relPath, file, category }) => {
+      let exif = null;
+      if (category === 'jpg' || category === 'raw') {
+        try {
+          exif = await readKeyExif(file.path);
+          if (exif && (exif.model || exif.dateTimeOriginal)) {
+            exifSuccess++;
+          } else {
+            exif = exif || {};
+          }
+        } catch (e) {
+          exifFailed++;
+        }
+      }
+      await this.manifest.addEntry(relPath, {
+        hash: null,
+        size: file.size,
+        mtime: new Date(file.modifiedTime).toISOString(),
+        exif: exif
+      });
+    });
+
+    // 4. 保存清单
+    await this.manifest.save();
+
+    // 5. 清空文件扫描缓存
+    this.invalidateScanCache();
+
+    return {
+      totalFiles: allScannedFiles.length,
+      exifSuccess,
+      exifFailed
+    };
   }
 }
 

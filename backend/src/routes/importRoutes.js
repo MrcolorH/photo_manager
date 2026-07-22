@@ -54,10 +54,10 @@ async function saveRepos(repos) {
 }
 
 // 从存储卡导入照片（支持实时进度，使用 GET 以支持 SSE）
-// 查询参数：sourcePath, repoId, smartNaming, mirrorPath, archiveByExif（默认 'true'）
+// 查询参数：sourcePath, repoId, smartNaming, mirrorPath, archiveByExif（默认 'false'）
 router.get('/', async (req, res) => {
   try {
-    const { sourcePath, repoId, smartNaming, mirrorPath, archiveByExif = 'true' } = req.query;
+    const { sourcePath, repoId, smartNaming, mirrorPath, archiveByExif = 'false' } = req.query;
 
     if (!sourcePath) {
       // SSE 错误格式
@@ -122,7 +122,6 @@ router.get('/', async (req, res) => {
       try {
         const message = `data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`;
         res.write(message);
-        console.log('发送进度:', progress.percentage + '% -', progress.currentFile);
       } catch (err) {
         console.error('发送进度失败:', err);
       }

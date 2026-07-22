@@ -39,7 +39,9 @@ import {
   DownloadOutlined,
   FolderAddOutlined,
   InfoCircleOutlined,
-  CameraOutlined
+  CameraOutlined,
+  DownOutlined,
+  LoadingOutlined
 } from '@ant-design/icons';
 import { PhotoSlider } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -49,6 +51,7 @@ import { useRepo } from '../contexts/RepoContext';
 const { Option } = Select;
 
 const PhotoGallery = () => {
+  const [modal, modalContextHolder] = Modal.useModal();
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState('jpg');
@@ -117,6 +120,9 @@ const PhotoGallery = () => {
 
   // 批量刷新 EXIF 状态
   const [refreshingExif, setRefreshingExif] = useState(false);
+
+  // 重建清单状态
+  const [rebuildingManifest, setRebuildingManifest] = useState(false);
 
   // 跨页预览缓存
   const [cachedPhotos, setCachedPhotos] = useState([]);
@@ -712,6 +718,42 @@ const PhotoGallery = () => {
     }
   };
 
+  // 重建清单：删除旧清单→重新扫描→读取 EXIF
+  const handleRebuildManifest = async () => {
+    if (!selectedRepo) return;
+    modal.confirm({
+      title: '重建清单',
+      content: '将删除当前仓库的清单文件并重新扫描所有文件、读取 EXIF。此操作可能需要一些时间，完成后照片预览和 EXIF 信息将恢复正常。是否继续？',
+      okText: '确认重建',
+      cancelText: '取消',
+      onOk: async () => {
+        setRebuildingManifest(true);
+        try {
+          const res = await photoApi.rebuildManifest(selectedRepo);
+          if (res.data.success) {
+            const { totalFiles, exifSuccess, exifFailed } = res.data.data;
+            notification.success({
+              message: '清单重建完成',
+              description: `共扫描 ${totalFiles} 个文件，EXIF 读取成功 ${exifSuccess} 个，失败 ${exifFailed} 个`,
+              placement: 'topRight',
+              duration: 5
+            });
+            fetchPhotos();
+          }
+        } catch (error) {
+          notification.error({
+            message: '重建清单失败',
+            description: error.response?.data?.error || error.message,
+            placement: 'topRight'
+          });
+          console.error(error);
+        } finally {
+          setRebuildingManifest(false);
+        }
+      }
+    });
+  };
+
   // Task 9.2：打开 EXIF 面板
   const handleOpenExif = async () => {
     const currentPhoto = cachedPhotos[previewIndex];
@@ -846,26 +888,46 @@ const PhotoGallery = () => {
               {tag.label}
             </Tag>
           ))}
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => {
-              setSelectedPhotos([]);
-              setSelectAll(false);
-              fetchPhotos();
-            }}
-            loading={loading}
-          >
-            刷新
-          </Button>
-          <Tooltip title="为旧版导入的照片补录 EXIF">
+          <Space.Compact>
             <Button
-              icon={<CameraOutlined />}
-              onClick={handleRefreshExif}
-              loading={refreshingExif}
+              icon={<ReloadOutlined />}
+              loading={loading}
+              onClick={() => {
+                setSelectedPhotos([]);
+                setSelectAll(false);
+                fetchPhotos();
+              }}
             >
-              刷新 EXIF
+              刷新
             </Button>
-          </Tooltip>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'exif',
+                    icon: refreshingExif ? <LoadingOutlined /> : <CameraOutlined />,
+                    label: '刷新 EXIF',
+                    disabled: refreshingExif || rebuildingManifest
+                  },
+                  {
+                    key: 'manifest',
+                    icon: rebuildingManifest ? <LoadingOutlined /> : <DatabaseOutlined />,
+                    label: '重建清单',
+                    disabled: refreshingExif || rebuildingManifest,
+                    danger: true
+                  }
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'exif') handleRefreshExif();
+                  if (key === 'manifest') handleRebuildManifest();
+                }
+              }}
+              placement="bottomRight"
+            >
+              <Button icon={<DownOutlined />} />
+            </Dropdown>
+          </Space.Compact>
         </Space>
       </div>
 
@@ -1478,6 +1540,7 @@ const PhotoGallery = () => {
           <Empty description="无 EXIF 信息" />
         )}
       </Modal>
+      {modalContextHolder}
     </>
   );
 };

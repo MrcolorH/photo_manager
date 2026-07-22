@@ -1,46 +1,8 @@
 /* ======== 拾光舱 · Dual Theme ======== */
 
-:root,
-[data-theme="dark"] {
-  /* ---- Dark Amber Palette ---- */
-  --bg: #0d0c0b;
-  --bg-elevated: #13110f;
-  --card: #171411;
-  --card-hover: #1f1b17;
-  --border: #2a241e;
-  --border-light: #3a322a;
-  --text: #e8ddd0;
-  --text-secondary: #c4b8aa;
-  --muted: #8a7e72;
-
-  /* accent = gold (dark) */
-  --accent: #d4a574;
-  --accent-light: #f4c576;
-  --accent-dark: #8b5a2b;
-  --accent-bg: rgba(212, 165, 116, 0.08);
-  --accent-border: rgba(212, 165, 116, 0.25);
-  --accent-text-on: #1a1410;
-
-  --gold: #d4a574;
-  --gold-light: #f4c576;
-  --gold-dark: #8b5a2b;
-  --gold-bg: rgba(212, 165, 116, 0.08);
-  --gold-border: rgba(212, 165, 116, 0.25);
-
-  --danger: #c75050;
-  --success: #7ab87a;
-  --info: #6ba3c7;
-
-  --shadow-strength: 0.5;
-  --scrollbar-track: #0d0c0b;
-  --scrollbar-thumb: #3a322a;
-  --scrollbar-thumb-hover: #8a7e72;
-  --selection-bg: rgba(212, 165, 116, 0.25);
-
-  color-scheme: dark;
-}
-
-[data-theme="light"] {
+/* 默认使用明亮主题，与 ConfigProvider 初始状态保持一致，
+   避免首次渲染时 CSS 变量和 antd 主题不同步导致选择框等组件颜色异常。 */
+:root {
   /* ---- Light Sky Palette (refined) ---- */
   --bg: #f8fafc;
   --bg-elevated: #f1f5f9;
@@ -80,6 +42,45 @@
   color-scheme: light;
 }
 
+[data-theme="dark"] {
+  /* ---- Dark Amber Palette ---- */
+  --bg: #0d0c0b;
+  --bg-elevated: #13110f;
+  --card: #171411;
+  --card-hover: #1f1b17;
+  --border: #2a241e;
+  --border-light: #3a322a;
+  --text: #e8ddd0;
+  --text-secondary: #c4b8aa;
+  --muted: #8a7e72;
+
+  /* accent = gold (dark) */
+  --accent: #d4a574;
+  --accent-light: #f4c576;
+  --accent-dark: #8b5a2b;
+  --accent-bg: rgba(212, 165, 116, 0.08);
+  --accent-border: rgba(212, 165, 116, 0.25);
+  --accent-text-on: #1a1410;
+
+  --gold: #d4a574;
+  --gold-light: #f4c576;
+  --gold-dark: #8b5a2b;
+  --gold-bg: rgba(212, 165, 116, 0.08);
+  --gold-border: rgba(212, 165, 116, 0.25);
+
+  --danger: #c75050;
+  --success: #7ab87a;
+  --info: #6ba3c7;
+
+  --shadow-strength: 0.5;
+  --scrollbar-track: #0d0c0b;
+  --scrollbar-thumb: #3a322a;
+  --scrollbar-thumb-hover: #8a7e72;
+  --selection-bg: rgba(212, 165, 116, 0.25);
+
+  color-scheme: dark;
+}
+
 /* ---- Base ---- */
 *,
 *::before,
@@ -90,7 +91,7 @@
 }
 
 html {
-  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 15px;
   line-height: 1.7;
   letter-spacing: 0.01em;
@@ -112,7 +113,7 @@ body {
 }
 
 h1, h2, h3 {
-  font-family: 'Noto Serif SC', Georgia, serif;
+  font-family: Georgia, serif;
   color: var(--text);
   font-weight: 700;
 }

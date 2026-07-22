@@ -45,6 +45,7 @@ const { Option } = Select;
 const { Step } = Steps;
 
 const ImportPage = () => {
+  const [modal, modalContextHolder] = Modal.useModal();
   const [sourcePath, setSourcePath] = useState('');
   const [defaultPath, setDefaultPath] = useState('/Volumes');
   const [currentStep, setCurrentStep] = useState(0);
@@ -72,7 +73,7 @@ const ImportPage = () => {
   const [repoPathSelecting, setRepoPathSelecting] = useState(false);
   const [smartNaming, setSmartNaming] = useState(false);
   // Task 7.1：导入归档与镜像备份相关状态
-  const [archiveByExif, setArchiveByExif] = useState(true);
+  const [archiveByExif, setArchiveByExif] = useState(false);
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
   const [mirrorPath, setMirrorPath] = useState('');
   const [mirrorPathSelecting, setMirrorPathSelecting] = useState(false);
@@ -164,7 +165,7 @@ const ImportPage = () => {
   };
 
   const handleDeleteRepo = (repo) => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认删除',
       content: `确定要删除仓库 "${repo.name}" 吗？\n注意：这不会删除实际文件，只是移除配置。`,
       onOk: async () => {
@@ -367,7 +368,7 @@ const ImportPage = () => {
             <ImportOutlined style={{ fontSize: 20, color: 'var(--accent)' }} />
           </div>
           <div>
-            <h2 style={{ margin: 0, fontFamily: "'Noto Serif SC', Georgia, serif", fontSize: 20 }}>存储卡导入</h2>
+            <h2 style={{ margin: 0, fontFamily: "Georgia, serif", fontSize: 20 }}>存储卡导入</h2>
             <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: 13 }}>
               一键将相机存储卡的 RAW、JPG 和视频收入仓库
             </p>
@@ -1054,6 +1055,7 @@ const ImportPage = () => {
           ]}
         />
       </Modal>
+      {modalContextHolder}
     </div>
   );
 };

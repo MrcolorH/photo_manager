@@ -34,6 +34,7 @@ import { useRepo } from '../contexts/RepoContext';
 const { Option } = Select;
 
 const SyncDeletePage = () => {
+  const [modal, modalContextHolder] = Modal.useModal();
   const [orphanRaws, setOrphanRaws] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -130,7 +131,7 @@ const SyncDeletePage = () => {
       return;
     }
 
-    Modal.confirm({
+    modal.confirm({
       title: '确认删除',
       icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
       content: (
@@ -393,6 +394,7 @@ const SyncDeletePage = () => {
           />
         </Card>
       )}
+      {modalContextHolder}
     </div>
   );
 };

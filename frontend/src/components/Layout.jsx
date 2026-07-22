@@ -5,7 +5,8 @@ import {
   ImportOutlined,
   DeleteOutlined,
   CameraOutlined,
-  SettingOutlined
+  SettingOutlined,
+  DashboardOutlined
 } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { photoApi } from '../api';
@@ -41,6 +42,11 @@ const Layout = () => {
   };
 
   const menuItems = [
+    {
+      key: '/dashboard',
+      icon: <DashboardOutlined />,
+      label: '概览'
+    },
     {
       key: '/gallery',
       icon: <PictureOutlined />,
@@ -93,7 +99,7 @@ const Layout = () => {
             <CameraOutlined style={{ fontSize: 14, color: '#1a1410' }} />
           </div>
           <span style={{
-            fontFamily: "'Noto Serif SC', Georgia, serif",
+            fontFamily: "Georgia, serif",
             fontSize: '1.15rem',
             color: 'var(--text)',
             fontWeight: 700,

@@ -210,6 +210,26 @@ router.post('/refresh-exif', async (req, res) => {
   }
 });
 
+// 重建清单：删除旧清单→重新扫描→读取 EXIF→写入新清单
+router.post('/rebuild-manifest', async (req, res) => {
+  try {
+    const { repoId } = req.body || {};
+    const fileService = await getFileService(repoId);
+    const result = await fileService.rebuildManifest();
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('重建清单失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // 完整性校验：检查清单与文件系统的一致性（缺失/损坏/未追踪）
 router.post('/verify-integrity', async (req, res) => {
   try {

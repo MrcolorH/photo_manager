@@ -46,3 +46,5 @@ Thumbs.db
 # Old build artifacts
 pkg-cache/
 Standalone/
+
+.dmg-builder-tmp

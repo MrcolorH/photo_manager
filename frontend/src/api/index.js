@@ -44,13 +44,26 @@ export const photoApi = {
 
   // 批量刷新已有文件的 EXIF（补录旧版导入缺失的 EXIF）
   refreshExif: (repoId, category = 'jpg') =>
-    api.post('/photos/refresh-exif', { repoId, category })
+    api.post('/photos/refresh-exif', { repoId, category }),
+
+  // 重建清单：删除旧清单→重新扫描→读取 EXIF
+  rebuildManifest: (repoId) =>
+    api.post('/photos/rebuild-manifest', { repoId })
+};
+
+// 设置相关API
+export const settingsApi = {
+  // 获取主题偏好
+  getTheme: () => api.get('/settings/theme'),
+
+  // 更新主题偏好
+  setTheme: (theme) => api.post('/settings/theme', { theme })
 };
 
 // 导入相关API
 export const importApi = {
   // 从存储卡导入（使用 EventSource 进行实时进度跟踪）
-  importFromCard: (sourcePath, repoId, smartNaming = false, archiveByExif = true, mirrorPath = null) => {
+  importFromCard: (sourcePath, repoId, smartNaming = false, archiveByExif = false, mirrorPath = null) => {
     return new Promise((resolve, reject) => {
       // 构建完整的 URL
       const baseUrl = window.location.origin;

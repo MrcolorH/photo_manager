@@ -312,12 +312,17 @@ function getFfmpegPath(resourcesPath) {
 }
 
 function getExiftoolPath(resourcesPath) {
-  // 优先使用 exiftool-vendored.exe (Windows)
+  // Windows: 优先使用 exiftool-vendored.exe
   const vendoredExe = path.join(__dirname, '..', 'backend', 'node_modules', 'exiftool-vendored.exe', 'bin', 'exiftool.exe');
   if (fs.existsSync(vendoredExe)) {
     return vendoredExe;
   }
-  // 如果已打包到 resources 中
+  // macOS / Linux: 优先使用 exiftool-vendored.pl 的 Perl 脚本
+  const vendoredPl = path.join(__dirname, '..', 'backend', 'node_modules', 'exiftool-vendored.pl', 'bin', 'exiftool');
+  if (fs.existsSync(vendoredPl)) {
+    return vendoredPl;
+  }
+  // 如果已打包到 resources 中 (Windows)
   const bundled = path.join(resourcesPath, 'exiftool.exe');
   if (fs.existsSync(bundled)) {
     return bundled;

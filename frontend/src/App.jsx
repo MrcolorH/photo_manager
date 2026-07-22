@@ -4,6 +4,7 @@ import zhCN from 'antd/locale/zh_CN';
 import { RepoProvider } from './contexts/RepoContext';
 import { useTheme } from './contexts/ThemeContext';
 import Layout from './components/Layout';
+import Dashboard from './pages/Dashboard';
 import PhotoGallery from './pages/PhotoGallery';
 import ImportPage from './pages/ImportPage';
 import SyncDeletePage from './pages/SyncDeletePage';
@@ -43,21 +44,25 @@ function App() {
         token: {
           ...(isDark ? darkTokens : lightTokens),
           borderRadius: 8,
-          fontFamily: "'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
         }
       }}
+      getPopupContainer={() => document.getElementById('app-root')}
     >
-      <Router>
-        <Routes>
-          <Route path="/" element={<RepoProvider><Layout /></RepoProvider>}>
-            <Route index element={<Navigate to="/gallery" replace />} />
-            <Route path="gallery" element={<PhotoGallery />} />
-            <Route path="import" element={<ImportPage />} />
-            <Route path="sync-delete" element={<SyncDeletePage />} />
-            <Route path="settings" element={<RepoSettings />} />
-          </Route>
-        </Routes>
-      </Router>
+      <div id="app-root" style={{ minHeight: '100vh' }}>
+        <Router>
+          <Routes>
+            <Route path="/" element={<RepoProvider><Layout /></RepoProvider>}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="gallery" element={<PhotoGallery />} />
+              <Route path="import" element={<ImportPage />} />
+              <Route path="sync-delete" element={<SyncDeletePage />} />
+              <Route path="settings" element={<RepoSettings />} />
+            </Route>
+          </Routes>
+        </Router>
+      </div>
     </ConfigProvider>
   );
 }
