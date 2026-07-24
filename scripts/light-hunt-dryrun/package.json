@@ -1,0 +1,13 @@
+{
+  "name": "light-hunt-dryrun",
+  "version": "1.0.0",
+  "private": true,
+  "description": "W1 dry-run 验证脚本：AOD550 亚太覆盖率 + suncalc 月相抽检",
+  "scripts": {
+    "aod550": "node aod550_probe.js",
+    "moonphase": "node moonphase_probe.js"
+  },
+  "dependencies": {
+    "suncalc": "^1.9.0"
+  }
+}

@@ -6,9 +6,11 @@ import {
   DeleteOutlined,
   CameraOutlined,
   SettingOutlined,
-  DashboardOutlined
+  DashboardOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { photoApi } from '../api';
 import { useRepo } from '../contexts/RepoContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -73,6 +75,42 @@ const Layout = () => {
     navigate(key);
   };
 
+  const isLightHuntActive = location.pathname === '/light-hunt';
+  const siderRef = useRef(null);
+  const lightHuntWrapperRef = useRef(null);
+  const [lightHuntPortal, setLightHuntPortal] = useState(null);
+
+  useEffect(() => {
+    const sider = siderRef.current;
+    if (!sider) return;
+
+    const children = sider.querySelector('.ant-layout-sider-children');
+    if (!children) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'lh-sidebar-extension-host';
+    sider.appendChild(wrapper);
+    lightHuntWrapperRef.current = wrapper;
+    setLightHuntPortal(wrapper);
+
+    const updateHeight = () => {
+      const height = wrapper.getBoundingClientRect().height;
+      children.style.height = `calc(100% - ${height}px)`;
+      children.style.minHeight = `calc(100% - ${height}px)`;
+    };
+
+    updateHeight();
+    const ro = new ResizeObserver(updateHeight);
+    ro.observe(wrapper);
+
+    return () => {
+      ro.disconnect();
+      if (wrapper.parentNode === sider) {
+        sider.removeChild(wrapper);
+      }
+    };
+  }, []);
+
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
       <Header style={{ 
@@ -131,13 +169,12 @@ const Layout = () => {
       </Header>
       
       <AntLayout>
-        <Sider 
-          width={210} 
-          theme="dark" 
-          style={{ 
+        <Sider
+          ref={siderRef}
+          width={210}
+          theme="dark"
+          style={{
             borderRight: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
             background: 'var(--card)',
             overflow: 'hidden'
           }}
@@ -211,10 +248,27 @@ const Layout = () => {
               ]}
             />
           </div>
+
         </Sider>
-        
-        <Content style={{ 
-          padding: '20px 28px', 
+
+        {lightHuntPortal && createPortal(
+          <div className="lh-sidebar-extension">
+            <div className="lh-sidebar-extension-label">扩展功能</div>
+            <button
+              type="button"
+              onClick={() => navigate('/light-hunt')}
+              className={`lh-sidebar-bottom ${isLightHuntActive ? 'active' : ''}`}
+            >
+              <ThunderboltOutlined style={{ fontSize: 15, opacity: 0.9 }} />
+              <span>追光百宝箱</span>
+              <span className="lh-sidebar-badge">BETA</span>
+            </button>
+          </div>,
+          lightHuntPortal
+        )}
+
+        <Content style={{
+          padding: '20px 28px',
           background: 'var(--bg)',
           overflow: 'auto',
           height: 'calc(100vh - 64px)',

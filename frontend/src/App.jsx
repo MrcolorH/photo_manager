@@ -9,6 +9,7 @@ import PhotoGallery from './pages/PhotoGallery';
 import ImportPage from './pages/ImportPage';
 import SyncDeletePage from './pages/SyncDeletePage';
 import RepoSettings from './pages/RepoSettings';
+import LightHunt from './pages/LightHunt';
 import './App.css';
 
 const darkTokens = {
@@ -59,6 +60,7 @@ function App() {
               <Route path="import" element={<ImportPage />} />
               <Route path="sync-delete" element={<SyncDeletePage />} />
               <Route path="settings" element={<RepoSettings />} />
+              <Route path="light-hunt" element={<LightHunt />} />
             </Route>
           </Routes>
         </Router>

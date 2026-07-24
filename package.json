@@ -1,6 +1,6 @@
 {
   "name": "shiguang-capsule",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "拾光舱 · 相机照片管理系统",
   "main": "electron/main.js",
   "scripts": {

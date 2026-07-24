@@ -38,6 +38,12 @@ resources/*.exe
 .trae/
 .qoder/
 
+# WorkBuddy project memory / working data
+.workbuddy/
+
+# Sample media (local large binaries, not for repo)
+sample_repo/
+
 # OS files
 .DS_Store
 Thumbs.db
