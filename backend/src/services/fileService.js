@@ -573,8 +573,10 @@ class FileService {
   }
 
   // 完整性校验：检查清单中的文件是否真实存在且哈希匹配，并找出文件系统中未被清单追踪的文件
-  // 返回 { missing: [...], corrupted: [...], untracked: [...] }，每项含 { relPath, path, reason }
-  async verifyIntegrity() {
+  // options.autoCleanup=true 时，自动从清单移除 missing 条目（清理历史脏数据）
+  // 返回 { missing, corrupted, untracked, cleaned }，每项含 { relPath, path, reason }
+  async verifyIntegrity(options = {}) {
+    const { autoCleanup = false } = options;
     const missing = [];
     const corrupted = [];
     const untracked = [];
@@ -645,7 +647,21 @@ class FileService {
       }
     }
 
-    return { missing, corrupted, untracked };
+    // 自动清理：从清单移除指向已缺失文件的条目（清理历史脏数据）
+    let cleaned = 0;
+    if (autoCleanup && missing.length > 0) {
+      for (const item of missing) {
+        if (await this.manifest.removeEntry(item.relPath)) {
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) {
+        await this.manifest.save();
+        this.invalidateScanCache();
+      }
+    }
+
+    return { missing, corrupted, untracked, cleaned };
   }
 
   // 对比文件系统与清单，返回差异（保留空壳方法以兼容旧调用）
@@ -656,10 +672,10 @@ class FileService {
   // 删除照片
   async deletePhoto(photoId, options = {}) {
     const { syncRaw = true } = options;
-    
+
     // 解码ID获取路径
     const photoPath = Buffer.from(photoId, 'base64').toString('utf8');
-    
+
     if (!await fileExists(photoPath)) {
       throw new Error('照片不存在');
     }
@@ -669,32 +685,81 @@ class FileService {
     const type = getFileType(path.extname(filename));
 
     const deletedFiles = [];
+    const removedEntries = [];
+    let manifestDirty = false;
+
+    // 相对仓库根的 forward-slash 路径（清单 key 格式）
+    const toRelPath = (absPath) => path.relative(this.basePath, absPath).replace(/\\/g, '/');
 
     // 删除主文件
     if (await deleteFile(photoPath)) {
       deletedFiles.push(photoPath);
     }
+    // 同步移除主文件的清单条目
+    {
+      const relPath = toRelPath(photoPath);
+      if (await this.manifest.removeEntry(relPath)) {
+        removedEntries.push(relPath);
+        manifestDirty = true;
+      }
+    }
 
-    // 如果是JPG且开启了同步删除，删除对应的RAW文件
+    // 如果是JPG且开启了同步删除，删除对应的RAW文件（含归档子目录 raw/YYYY/MM/）
     if (type === 'jpg' && syncRaw) {
       const rawDir = this.getCategoryPath('raw');
       const rawExtensions = ['.arw', '.cr2', '.cr3', '.nef', '.dng', '.orf', '.raf', '.rw2', '.raw'];
-      
+      const extSet = new Set(rawExtensions.map(e => e.toLowerCase()));
+      const deletedAbsPaths = new Set(deletedFiles.map(p => path.resolve(p)));
+
+      // 以清单为权威来源：覆盖 raw/ 顶层与 raw/YYYY/MM/ 归档子目录
+      const allFiles = await this.manifest.getAllFiles();
+      for (const relPath of Object.keys(allFiles)) {
+        if (!relPath.startsWith('raw/')) continue;
+        const baseName = path.basename(relPath);
+        const ext = path.extname(baseName).toLowerCase();
+        if (getFileNameWithoutExt(baseName) !== filenameWithoutExt) continue;
+        if (!extSet.has(ext)) continue;
+
+        const absPath = path.join(this.basePath, relPath);
+        if (!deletedAbsPaths.has(path.resolve(absPath)) && await fileExists(absPath)) {
+          if (await deleteFile(absPath)) {
+            deletedFiles.push(absPath);
+            deletedAbsPaths.add(path.resolve(absPath));
+          }
+        }
+        // 无论文件是否存在，都从清单移除（顺带清理历史脏条目）
+        if (await this.manifest.removeEntry(relPath)) {
+          removedEntries.push(relPath);
+          manifestDirty = true;
+        }
+      }
+
+      // 顶层文件系统兜底：处理"RAW 在磁盘但不在清单中"的边缘情况
       for (const ext of rawExtensions) {
         const rawPath = path.join(rawDir, filenameWithoutExt + ext);
+        if (deletedAbsPaths.has(path.resolve(rawPath))) continue;
         if (await fileExists(rawPath)) {
           if (await deleteFile(rawPath)) {
             deletedFiles.push(rawPath);
+          }
+          const relPath = toRelPath(rawPath);
+          if (await this.manifest.removeEntry(relPath)) {
+            removedEntries.push(relPath);
+            manifestDirty = true;
           }
         }
       }
     }
 
+    if (manifestDirty) {
+      await this.manifest.save();
+    }
     this.invalidateScanCache();
 
     return {
       success: true,
-      deletedFiles
+      deletedFiles,
+      removedEntries
     };
   }
 
@@ -743,18 +808,27 @@ class FileService {
       success: [],
       failed: []
     };
+    let manifestDirty = false;
 
     for (const fileId of fileIds) {
       try {
         const filePath = Buffer.from(fileId, 'base64').toString('utf8');
-        
+        const relPath = path.relative(this.basePath, filePath).replace(/\\/g, '/');
+
         if (await fileExists(filePath)) {
           if (await deleteFile(filePath)) {
             results.success.push(fileId);
+            if (await this.manifest.removeEntry(relPath)) {
+              manifestDirty = true;
+            }
           } else {
             results.failed.push({ id: fileId, reason: '删除失败' });
           }
         } else {
+          // 文件不存在：清单里很可能残留脏条目，尝试移除
+          if (await this.manifest.removeEntry(relPath)) {
+            manifestDirty = true;
+          }
           results.failed.push({ id: fileId, reason: '文件不存在' });
         }
       } catch (error) {
@@ -762,6 +836,9 @@ class FileService {
       }
     }
 
+    if (manifestDirty) {
+      await this.manifest.save();
+    }
     if (results.success.length > 0) {
       this.invalidateScanCache();
     }
@@ -857,12 +934,18 @@ class FileService {
       success: [],
       failed: []
     };
-    
+    let manifestDirty = false;
+
     for (const id of fileIds) {
       try {
         const filePath = Buffer.from(id, 'base64').toString('utf8');
+        const relPath = path.relative(this.basePath, filePath).replace(/\\/g, '/');
         await deleteFile(filePath);
         result.success.push({ id, path: filePath });
+        // 同步移除清单条目（文件不存在时也会清理脏条目）
+        if (await this.manifest.removeEntry(relPath)) {
+          manifestDirty = true;
+        }
       } catch (error) {
         result.failed.push({
           id,
@@ -870,7 +953,10 @@ class FileService {
         });
       }
     }
-    
+
+    if (manifestDirty) {
+      await this.manifest.save();
+    }
     if (result.success.length > 0) {
       this.invalidateScanCache();
     }

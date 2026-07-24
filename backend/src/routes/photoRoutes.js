@@ -231,11 +231,12 @@ router.post('/rebuild-manifest', async (req, res) => {
 });
 
 // 完整性校验：检查清单与文件系统的一致性（缺失/损坏/未追踪）
+// autoCleanup=true 时自动从清单移除缺失条目
 router.post('/verify-integrity', async (req, res) => {
   try {
-    const { repoId } = req.body || {};
+    const { repoId, autoCleanup = false } = req.body || {};
     const fileService = await getFileService(repoId);
-    const result = await fileService.verifyIntegrity();
+    const result = await fileService.verifyIntegrity({ autoCleanup: !!autoCleanup });
 
     res.json({
       success: true,

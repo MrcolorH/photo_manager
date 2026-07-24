@@ -39,8 +39,9 @@ export const photoApi = {
   // 获取完整 EXIF 信息
   getFullExif: (photoId) => api.get(`/photos/${photoId}/exif`),
 
-  // 校验仓库完整性（备用接口）
-  verifyIntegrity: (repoId) => api.post('/photos/verify-integrity', { repoId }),
+  // 校验仓库完整性；autoCleanup=true 时自动从清单移除缺失条目
+  verifyIntegrity: (repoId, autoCleanup = false) =>
+    api.post('/photos/verify-integrity', { repoId, autoCleanup }),
 
   // 批量刷新已有文件的 EXIF（补录旧版导入缺失的 EXIF）
   refreshExif: (repoId, category = 'jpg') =>

@@ -41,7 +41,8 @@ import {
   InfoCircleOutlined,
   CameraOutlined,
   DownOutlined,
-  LoadingOutlined
+  LoadingOutlined,
+  SafetyCertificateOutlined
 } from '@ant-design/icons';
 import { PhotoSlider } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -123,6 +124,9 @@ const PhotoGallery = () => {
 
   // 重建清单状态
   const [rebuildingManifest, setRebuildingManifest] = useState(false);
+
+  // 完整性校验状态
+  const [verifyingIntegrity, setVerifyingIntegrity] = useState(false);
 
   // 跨页预览缓存
   const [cachedPhotos, setCachedPhotos] = useState([]);
@@ -754,6 +758,79 @@ const PhotoGallery = () => {
     });
   };
 
+  // 完整性校验：检查清单与文件系统一致性，可选自动清理缺失条目（清理历史脏数据/空占位）
+  const handleVerifyIntegrity = async () => {
+    if (!selectedRepo) return;
+    setVerifyingIntegrity(true);
+    let report;
+    try {
+      const res = await photoApi.verifyIntegrity(selectedRepo, false);
+      if (!res.data.success) {
+        notification.error({ message: '完整性校验失败', description: res.data.error, placement: 'topRight' });
+        return;
+      }
+      report = res.data.data;
+    } catch (error) {
+      notification.error({
+        message: '完整性校验失败',
+        description: error.response?.data?.error || error.message,
+        placement: 'topRight'
+      });
+      return;
+    } finally {
+      setVerifyingIntegrity(false);
+    }
+
+    const { missing = [], corrupted = [], untracked = [] } = report;
+    const summary = `缺失 ${missing.length} 个、损坏 ${corrupted.length} 个、未追踪 ${untracked.length} 个`;
+
+    if (missing.length === 0 && corrupted.length === 0 && untracked.length === 0) {
+      notification.success({
+        message: '完整性校验通过',
+        description: '清单与文件系统一致，未发现异常。',
+        placement: 'topRight'
+      });
+      return;
+    }
+
+    if (missing.length > 0) {
+      modal.confirm({
+        title: '完整性校验结果',
+        content: `发现 ${summary}。是否自动从清单移除 ${missing.length} 个缺失条目（清理空占位）？`,
+        okText: '自动清理缺失条目',
+        cancelText: '仅查看',
+        onOk: async () => {
+          setVerifyingIntegrity(true);
+          try {
+            const cleanRes = await photoApi.verifyIntegrity(selectedRepo, true);
+            if (cleanRes.data.success) {
+              const cleaned = cleanRes.data.data.cleaned || 0;
+              notification.success({
+                message: '清理完成',
+                description: `已从清单移除 ${cleaned} 个缺失条目。`,
+                placement: 'topRight'
+              });
+              fetchPhotos();
+            }
+          } catch (error) {
+            notification.error({
+              message: '清理失败',
+              description: error.response?.data?.error || error.message,
+              placement: 'topRight'
+            });
+          } finally {
+            setVerifyingIntegrity(false);
+          }
+        }
+      });
+    } else {
+      modal.info({
+        title: '完整性校验结果',
+        content: `发现 ${summary}，无缺失条目需清理。`
+      });
+    }
+  };
+
   // Task 9.2：打开 EXIF 面板
   const handleOpenExif = async () => {
     const currentPhoto = cachedPhotos[previewIndex];
@@ -908,18 +985,25 @@ const PhotoGallery = () => {
                     key: 'exif',
                     icon: refreshingExif ? <LoadingOutlined /> : <CameraOutlined />,
                     label: '刷新 EXIF',
-                    disabled: refreshingExif || rebuildingManifest
+                    disabled: refreshingExif || rebuildingManifest || verifyingIntegrity
+                  },
+                  {
+                    key: 'integrity',
+                    icon: verifyingIntegrity ? <LoadingOutlined /> : <SafetyCertificateOutlined />,
+                    label: '完整性校验',
+                    disabled: refreshingExif || rebuildingManifest || verifyingIntegrity
                   },
                   {
                     key: 'manifest',
                     icon: rebuildingManifest ? <LoadingOutlined /> : <DatabaseOutlined />,
                     label: '重建清单',
-                    disabled: refreshingExif || rebuildingManifest,
+                    disabled: refreshingExif || rebuildingManifest || verifyingIntegrity,
                     danger: true
                   }
                 ],
                 onClick: ({ key }) => {
                   if (key === 'exif') handleRefreshExif();
+                  if (key === 'integrity') handleVerifyIntegrity();
                   if (key === 'manifest') handleRebuildManifest();
                 }
               }}
