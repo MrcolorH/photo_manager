@@ -9,7 +9,8 @@ import {
   DashboardOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { photoApi } from '../api';
 import { useRepo } from '../contexts/RepoContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -75,6 +76,40 @@ const Layout = () => {
   };
 
   const isLightHuntActive = location.pathname === '/light-hunt';
+  const siderRef = useRef(null);
+  const lightHuntWrapperRef = useRef(null);
+  const [lightHuntPortal, setLightHuntPortal] = useState(null);
+
+  useEffect(() => {
+    const sider = siderRef.current;
+    if (!sider) return;
+
+    const children = sider.querySelector('.ant-layout-sider-children');
+    if (!children) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'lh-sidebar-extension-host';
+    sider.appendChild(wrapper);
+    lightHuntWrapperRef.current = wrapper;
+    setLightHuntPortal(wrapper);
+
+    const updateHeight = () => {
+      const height = wrapper.getBoundingClientRect().height;
+      children.style.height = `calc(100% - ${height}px)`;
+      children.style.minHeight = `calc(100% - ${height}px)`;
+    };
+
+    updateHeight();
+    const ro = new ResizeObserver(updateHeight);
+    ro.observe(wrapper);
+
+    return () => {
+      ro.disconnect();
+      if (wrapper.parentNode === sider) {
+        sider.removeChild(wrapper);
+      }
+    };
+  }, []);
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -134,13 +169,12 @@ const Layout = () => {
       </Header>
       
       <AntLayout>
-        <Sider 
-          width={210} 
-          theme="dark" 
-          style={{ 
+        <Sider
+          ref={siderRef}
+          width={210}
+          theme="dark"
+          style={{
             borderRight: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
             background: 'var(--card)',
             overflow: 'hidden'
           }}
@@ -215,49 +249,26 @@ const Layout = () => {
             />
           </div>
 
-          {/* 追光百宝箱 - 固定在最底部的扩展入口 */}
-          <button
-            type="button"
-            onClick={() => navigate('/light-hunt')}
-            className={`lh-sidebar-bottom ${isLightHuntActive ? 'active' : ''}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '12px 20px',
-              margin: '8px 12px 12px',
-              border: '1px dashed var(--border)',
-              borderRadius: 10,
-              background: isLightHuntActive ? 'var(--accent-bg)' : 'transparent',
-              color: isLightHuntActive ? 'var(--accent)' : 'var(--text-secondary)',
-              fontFamily: 'inherit',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              width: 'calc(100% - 24px)',
-              textAlign: 'left',
-              flexShrink: 0,
-            }}
-          >
-            <ThunderboltOutlined style={{ fontSize: 15, opacity: 0.9 }} />
-            <span>追光百宝箱</span>
-            <span style={{
-              marginLeft: 'auto',
-              fontSize: 10,
-              color: 'var(--muted)',
-              padding: '2px 6px',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-              letterSpacing: '0.05em',
-            }}>
-              BETA
-            </span>
-          </button>
         </Sider>
-        
-        <Content style={{ 
-          padding: '20px 28px', 
+
+        {lightHuntPortal && createPortal(
+          <div className="lh-sidebar-extension">
+            <div className="lh-sidebar-extension-label">扩展功能</div>
+            <button
+              type="button"
+              onClick={() => navigate('/light-hunt')}
+              className={`lh-sidebar-bottom ${isLightHuntActive ? 'active' : ''}`}
+            >
+              <ThunderboltOutlined style={{ fontSize: 15, opacity: 0.9 }} />
+              <span>追光百宝箱</span>
+              <span className="lh-sidebar-badge">BETA</span>
+            </button>
+          </div>,
+          lightHuntPortal
+        )}
+
+        <Content style={{
+          padding: '20px 28px',
           background: 'var(--bg)',
           overflow: 'auto',
           height: 'calc(100vh - 64px)',

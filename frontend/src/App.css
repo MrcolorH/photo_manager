@@ -473,10 +473,43 @@ html,
   transform: scale(1.08);
 }
 
-/* ======== 侧边栏底部扩展入口（追光百宝箱等） ======== */
+/* ======== 侧边栏独立扩展入口（与 ant-layout-sider-children 平级） ======== */
+.lh-sidebar-extension-host {
+  flex-shrink: 0;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.lh-sidebar-extension-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 8px;
+  padding-left: 4px;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
 .lh-sidebar-bottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, calc(var(--shadow-strength) * 0.5));
 }
 
 .lh-sidebar-bottom::before {
@@ -490,8 +523,10 @@ html,
 }
 
 .lh-sidebar-bottom:hover {
-  border-color: var(--accent) !important;
-  color: var(--accent) !important;
+  border-color: var(--accent-border);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, calc(var(--shadow-strength) * 1.5));
 }
 
 .lh-sidebar-bottom:hover::before {
@@ -499,6 +534,25 @@ html,
 }
 
 .lh-sidebar-bottom.active {
-  border-color: var(--accent) !important;
-  border-style: solid !important;
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-border) inset;
+}
+
+.lh-sidebar-badge {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--muted);
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  background: var(--bg-elevated);
+}
+
+.lh-sidebar-bottom.active .lh-sidebar-badge {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: transparent;
 }

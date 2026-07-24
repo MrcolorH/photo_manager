@@ -651,53 +651,44 @@
   font-weight: 500;
 }
 
-/* ---- Favorites ---- */
-.lh-favorites {
-  margin-bottom: 4px;
+/* ---- City option (in Select dropdown) ---- */
+.lh-city-select .ant-select-item-option {
+  position: relative;
 }
 
-.lh-fav-list {
+.lh-city-select .ant-select-item-option-content {
+  pointer-events: auto;
+}
+
+.lh-city-option {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.lh-fav-item {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--lh-transition);
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 4px;
+  position: relative;
+  z-index: 1;
 }
 
-.lh-fav-item:hover {
-  border-color: var(--lh-sunset);
-  color: var(--lh-sunset);
+.lh-city-option-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.lh-fav-item.active {
-  background: var(--lh-sunset-bg);
-  border-color: var(--lh-sunset);
-  color: var(--lh-sunset-text);
-  font-weight: 500;
-}
-
-.lh-fav-item .lh-fav-actions {
+.lh-city-option-actions {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: 4px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
 }
 
-.lh-fav-item .lh-fav-actions button {
-  width: 20px;
-  height: 20px;
+.lh-city-option-btn {
+  width: 22px;
+  height: 22px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -708,11 +699,24 @@
   cursor: pointer;
   border-radius: 50%;
   transition: all var(--lh-transition);
+  font-size: 13px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 3;
 }
 
-.lh-fav-item .lh-fav-actions button:hover {
-  background: var(--card);
+.lh-city-option-btn:hover {
+  background: var(--bg);
   color: var(--lh-sunset);
+}
+
+.lh-city-option-btn.active {
+  color: var(--lh-sunset);
+}
+
+.lh-city-option-del:hover {
+  color: var(--lh-thunder);
+  background: var(--lh-thunder-bg);
 }
 
 .lh-empty-state {

@@ -9,12 +9,13 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Select, Button, Spin, message, Modal, Form, Input, InputNumber, Switch,
+  Select, Spin, message, Modal, Form, Input, InputNumber, ConfigProvider,
 } from 'antd';
 import {
-  ThunderboltOutlined, ReloadOutlined, EnvironmentOutlined, PlusOutlined, StarOutlined, StarFilled, DeleteOutlined, CheckOutlined,
+  ThunderboltOutlined, ReloadOutlined, PlusOutlined, StarOutlined, StarFilled, DeleteOutlined, CheckOutlined,
 } from '@ant-design/icons';
 import { lightHuntApi } from '../api';
+import { useTheme } from '../contexts/ThemeContext';
 import { aggregateDailyMax, scoreStartrail } from '../utils/startrailScore';
 import './LightHunt.css';
 
@@ -157,6 +158,7 @@ function isShootable(w) {
 }
 
 export default function LightHunt() {
+  const { isDark } = useTheme();
   const [builtinCities, setBuiltinCities] = useState([]);
   const [savedCities, setSavedCities] = useState([]);
   const [selectedCity, setSelectedCity] = useState(null);
@@ -175,8 +177,7 @@ export default function LightHunt() {
       setSavedCities(saved || []);
       setBuiltinCities(builtin || []);
       if (!selectedCity) {
-        const priority = (saved || []).find((c) => c.priority);
-        const def = priority || (saved || [])[0] || (builtin || []).find((c) => c.id === 'hangzhou') || (builtin || [])[0];
+        const def = (saved || [])[0] || (builtin || []).find((c) => c.id === 'hangzhou') || (builtin || [])[0];
         if (def) setSelectedCity(def);
       }
     } catch (e) {
@@ -219,26 +220,45 @@ export default function LightHunt() {
     return scoreStartrail(forecast.night_cloud, selectedCity.lat, selectedCity.lon);
   }, [forecast, selectedCity]);
 
-  // 城市下拉选项 = 收藏夹 + 内置
+  // 城市下拉选项：
+  //   收藏城市组 = 所有已收藏城市（自建 + 已收藏的内置）
+  //   内置城市组 = 全部内置城市（已收藏的也保留，显示已收藏状态可取消收藏）
+  //   为避免 value 冲突，内置组使用 'builtin-' 前缀作为 value
   const cityOptions = useMemo(() => {
     const opts = [];
     if (savedCities.length) {
       opts.push({
         label: '收藏城市',
-        options: savedCities.map((c) => ({ label: `${c.name}${c.priority ? ' ★' : ''}`, value: c.id || c.name })),
+        options: savedCities.map((c) => ({
+          label: c.name,
+          value: c.id || c.name,
+          cityData: c,
+        })),
       });
     }
     if (builtinCities.length) {
       opts.push({
         label: '内置城市',
-        options: builtinCities.map((c) => ({ label: c.name, value: c.id })),
+        options: builtinCities.map((c) => ({
+          label: c.name,
+          value: `builtin-${c.id}`,
+          cityData: c,
+        })),
       });
     }
     return opts;
   }, [savedCities, builtinCities]);
 
+  // 判断城市是否为自建地点（不在内置表中）
+  const isCustomCity = useCallback((city) => {
+    if (!city) return false;
+    return !builtinCities.some((b) => b.id === city.id || b.name === city.name);
+  }, [builtinCities]);
+
   const onCityChange = (val) => {
-    const hit = [...savedCities, ...builtinCities].find((c) => (c.id || c.name) === val);
+    // 内置组使用 'builtin-' 前缀，去掉前缀后查找
+    const realVal = val.startsWith('builtin-') ? val.replace('builtin-', '') : val;
+    const hit = [...savedCities, ...builtinCities].find((c) => (c.id || c.name) === realVal);
     if (hit) setSelectedCity(hit);
   };
 
@@ -246,7 +266,7 @@ export default function LightHunt() {
   const onAddCity = async () => {
     try {
       const v = await addForm.validateFields();
-      await lightHuntApi.addCity(v.name, v.lat, v.lon, v.priority);
+      await lightHuntApi.addCity(v.name, v.lat, v.lon, false);
       message.success(`${v.name} 已加入收藏`);
       setAddModalOpen(false);
       addForm.resetFields();
@@ -257,26 +277,49 @@ export default function LightHunt() {
     }
   };
 
-  // 设置重点
-  const onTogglePriority = async (city, e) => {
+  // 切换收藏状态（仅内置城市使用：加入/移出收藏夹）
+  const onToggleSave = async (city, e) => {
     e?.stopPropagation();
+    e?.preventDefault();
+    // 同时检查 id 和 name，处理后端用 name 生成 id 的不一致
+    const savedCity = savedCities.find((s) =>
+      s.id === city.id || s.name === city.name ||
+      s.id === city.name || s.name === city.id
+    );
+    const saved = !!savedCity;
     try {
-      await lightHuntApi.setPriority(city.id, !city.priority);
+      if (saved) {
+        await lightHuntApi.removeCity(savedCity.id);
+        message.success(`${city.name} 已取消收藏`);
+        // 如果取消收藏的是当前选中城市，切换到默认
+        if (selectedCity && (selectedCity.id === city.id || selectedCity.name === city.name)) {
+          const next = savedCities.find((c) => c.id !== savedCity.id) || builtinCities.find((c) => c.id === 'hangzhou') || builtinCities[0];
+          setSelectedCity(next || null);
+        }
+      } else {
+        await lightHuntApi.addCity(city.name, city.lat, city.lon, false);
+        message.success(`${city.name} 已收藏`);
+      }
       fetchCities();
-    } catch (e) {
-      message.error('设置失败：' + (e.response?.data?.error || e.message));
+    } catch (err) {
+      message.error('操作失败：' + (err.response?.data?.error || err.message));
     }
   };
 
-  // 删除收藏
+  // 删除自建地点
   const onRemoveCity = async (city, e) => {
     e?.stopPropagation();
+    e?.preventDefault();
     try {
       await lightHuntApi.removeCity(city.id);
-      message.success(`${city.name} 已移除`);
+      message.success(`${city.name} 已删除`);
+      if (selectedCity?.id === city.id) {
+        const next = savedCities.find((c) => c.id !== city.id) || builtinCities.find((c) => c.id === 'hangzhou') || builtinCities[0];
+        setSelectedCity(next || null);
+      }
       fetchCities();
-    } catch (e) {
-      message.error('删除失败：' + (e.response?.data?.error || e.message));
+    } catch (err) {
+      message.error('删除失败：' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -406,52 +449,102 @@ export default function LightHunt() {
     stars: '夜间晴朗无月时可拍摄星轨与银河。注意光污染与月相，月相值越低越利于星空。建议远离城市光害区域。',
   };
 
+  // 局部覆盖 antd 主题色，让 Select/Modal 等弹层组件与追光百宝箱的暖橙风格一致
+  const lhTheme = {
+    token: {
+      colorPrimary: isDark ? '#e08a5c' : '#d4763c',
+      colorPrimaryHover: isDark ? '#f0a06e' : '#e8915c',
+      colorPrimaryActive: isDark ? '#c4663a' : '#b85f2a',
+    },
+    components: {
+      Select: {
+        optionActiveBg: isDark ? 'rgba(224, 138, 92, 0.18)' : 'rgba(212, 118, 60, 0.10)',
+        optionSelectedBg: isDark ? 'rgba(224, 138, 92, 0.25)' : 'rgba(212, 118, 60, 0.15)',
+      },
+      Modal: {
+        // 使用 colorPrimary 即可，无需额外覆盖
+      },
+    },
+  };
+
+  const renderCityOption = (option) => {
+    const city = option.data?.cityData;
+    if (!city) return option.label;
+    const custom = isCustomCity(city);
+    // 真正判断是否已收藏：自建地点必然已收藏（在收藏组），内置城市需同时检查 id 和 name
+    // 因为后端 addCity 会用 name 生成 id（如"北京" → id="北京"），与内置 id（"beijing"）不同
+    const saved = custom || savedCities.some((s) =>
+      s.id === city.id || s.name === city.name ||
+      s.id === city.name || s.name === city.id
+    );
+    const stopClick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    return (
+      <div className="lh-city-option">
+        <span className="lh-city-option-name">{city.name}</span>
+        <span
+          className="lh-city-option-actions"
+          onClick={stopClick}
+          onMouseDown={stopClick}
+        >
+          {custom ? (
+            <button
+              type="button"
+              className="lh-city-option-btn lh-city-option-del"
+              title="删除"
+              onMouseDown={stopClick}
+              onClick={(e) => onRemoveCity(city, e)}
+            >
+              <DeleteOutlined />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`lh-city-option-btn lh-city-option-fav ${saved ? 'active' : ''}`}
+              title={saved ? '取消收藏' : '收藏'}
+              onMouseDown={stopClick}
+              onClick={(e) => onToggleSave(city, e)}
+            >
+              {saved ? <StarFilled /> : <StarOutlined />}
+            </button>
+          )}
+        </span>
+      </div>
+    );
+  };
+
   return (
-    <div className="light-hunt">
-      <div className="lh-page">
+    <ConfigProvider theme={lhTheme}>
+      <div className="light-hunt">
+        <div className="lh-page">
         {/* Header */}
         <div className="lh-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <Select
               showSearch
               className="lh-city-select"
-              style={{ minWidth: 180 }}
+              style={{ minWidth: 220 }}
               placeholder="选择城市"
-              value={selectedCity ? (selectedCity.id || selectedCity.name) : undefined}
+              value={(() => {
+                if (!selectedCity) return undefined;
+                // 如果已收藏，优先匹配收藏组的 value
+                const isSaved = savedCities.some((s) =>
+                  s.id === selectedCity.id || s.name === selectedCity.name ||
+                  s.id === selectedCity.name || s.name === selectedCity.id
+                );
+                return isSaved ? (selectedCity.id || selectedCity.name) : `builtin-${selectedCity.id}`;
+              })()}
               onChange={onCityChange}
               options={cityOptions}
               optionFilterProp="label"
-              dropdownMatchSelectWidth={220}
+              dropdownMatchSelectWidth={280}
+              optionRender={renderCityOption}
               suffixIcon={
                 <svg className="lh-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
               }
             />
-
-            {/* 收藏夹快捷入口 */}
-            {savedCities.length > 0 && (
-              <div className="lh-favorites">
-                <div className="lh-fav-list">
-                  {savedCities.map((c) => (
-                    <span
-                      key={c.id}
-                      className={`lh-fav-item ${selectedCity?.id === c.id ? 'active' : ''}`}
-                      onClick={() => setSelectedCity(c)}
-                    >
-                      {c.name}
-                      {c.priority && <StarFilled style={{ fontSize: 12, color: 'var(--lh-sunset)' }} />}
-                      <span className="lh-fav-actions">
-                        <button title={c.priority ? '取消重点' : '设为重点'} onClick={(e) => onTogglePriority(c, e)}>
-                          {c.priority ? <StarFilled style={{ fontSize: 12 }} /> : <StarOutlined style={{ fontSize: 12 }} />}
-                        </button>
-                        <button title="删除" onClick={(e) => onRemoveCity(c, e)}>
-                          <DeleteOutlined style={{ fontSize: 12 }} />
-                        </button>
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="lh-actions">
@@ -628,11 +721,9 @@ export default function LightHunt() {
               <InputNumber style={{ width: '100%' }} placeholder="如 100.23" step={0.01} />
             </Form.Item>
           </div>
-          <Form.Item name="priority" label="设为重点城市（详细预测 + 系统通知）" valuePropName="checked">
-            <Switch />
-          </Form.Item>
         </Form>
-      </Modal>
-    </div>
+        </Modal>
+      </div>
+    </ConfigProvider>
   );
 }
