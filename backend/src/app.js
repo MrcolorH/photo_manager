@@ -7,6 +7,7 @@ require('dotenv').config();
 const photoRoutes = require('./routes/photoRoutes');
 const importRoutes = require('./routes/importRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const lightHuntRoutes = require('./routes/lightHuntRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -73,6 +74,7 @@ app.use('/uploads', (req, res, next) => {
 app.use('/api/photos', photoRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/light-hunt', lightHuntRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

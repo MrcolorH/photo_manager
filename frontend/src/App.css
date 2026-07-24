@@ -472,3 +472,33 @@ html,
   background: var(--accent-bg);
   transform: scale(1.08);
 }
+
+/* ======== 侧边栏底部扩展入口（追光百宝箱等） ======== */
+.lh-sidebar-bottom {
+  position: relative;
+  overflow: hidden;
+}
+
+.lh-sidebar-bottom::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--accent-bg) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.lh-sidebar-bottom:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+.lh-sidebar-bottom:hover::before {
+  opacity: 1;
+}
+
+.lh-sidebar-bottom.active {
+  border-color: var(--accent) !important;
+  border-style: solid !important;
+}

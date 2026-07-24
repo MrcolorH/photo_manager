@@ -198,4 +198,40 @@ export const importApi = {
   selectFolder: () => api.get('/import/select-folder')
 };
 
+// 追光功能 API
+export const lightHuntApi = {
+  // 内置城市表
+  getBuiltinCities: () => api.get('/light-hunt/builtin'),
+
+  // 收藏夹 + 内置城市
+  getCities: () => api.get('/light-hunt/cities'),
+
+  // 添加收藏城市
+  addCity: (name, lat, lon, priority = false) =>
+    api.post('/light-hunt/cities', { name, lat, lon, priority }),
+
+  // 删除收藏城市
+  removeCity: (id) => api.delete(`/light-hunt/cities/${encodeURIComponent(id)}`),
+
+  // 设置重点城市
+  setPriority: (id, priority) =>
+    api.put(`/light-hunt/cities/${encodeURIComponent(id)}/priority`, { priority }),
+
+  // 综合预测（首屏主用）：朝霞/晚霞/雷暴/夜间云量
+  getForecast: (cityId, days = 7) =>
+    api.get(`/light-hunt/forecast/${encodeURIComponent(cityId)}`, { params: { days } }),
+
+  // 临时经纬度查询（"今日追光"临时地点）
+  getForecastByCoord: (lat, lon, days = 7) =>
+    api.get('/light-hunt/forecast-by-coord', { params: { lat, lon, days } }),
+
+  // 单独雷暴
+  getThunderstorm: (cityId, days = 7) =>
+    api.get(`/light-hunt/thunderstorm/${encodeURIComponent(cityId)}`, { params: { days } }),
+
+  // 单独朝霞/晚霞
+  getSunriseSunset: (cityId, days = 7) =>
+    api.get(`/light-hunt/sunrise-sunset/${encodeURIComponent(cityId)}`, { params: { days } }),
+};
+
 export default api;

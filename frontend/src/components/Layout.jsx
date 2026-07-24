@@ -6,7 +6,8 @@ import {
   DeleteOutlined,
   CameraOutlined,
   SettingOutlined,
-  DashboardOutlined
+  DashboardOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { photoApi } from '../api';
@@ -72,6 +73,8 @@ const Layout = () => {
   const handleMenuClick = ({ key }) => {
     navigate(key);
   };
+
+  const isLightHuntActive = location.pathname === '/light-hunt';
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -211,6 +214,46 @@ const Layout = () => {
               ]}
             />
           </div>
+
+          {/* 追光百宝箱 - 固定在最底部的扩展入口 */}
+          <button
+            type="button"
+            onClick={() => navigate('/light-hunt')}
+            className={`lh-sidebar-bottom ${isLightHuntActive ? 'active' : ''}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '12px 20px',
+              margin: '8px 12px 12px',
+              border: '1px dashed var(--border)',
+              borderRadius: 10,
+              background: isLightHuntActive ? 'var(--accent-bg)' : 'transparent',
+              color: isLightHuntActive ? 'var(--accent)' : 'var(--text-secondary)',
+              fontFamily: 'inherit',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              width: 'calc(100% - 24px)',
+              textAlign: 'left',
+              flexShrink: 0,
+            }}
+          >
+            <ThunderboltOutlined style={{ fontSize: 15, opacity: 0.9 }} />
+            <span>追光百宝箱</span>
+            <span style={{
+              marginLeft: 'auto',
+              fontSize: 10,
+              color: 'var(--muted)',
+              padding: '2px 6px',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              letterSpacing: '0.05em',
+            }}>
+              BETA
+            </span>
+          </button>
         </Sider>
         
         <Content style={{ 
