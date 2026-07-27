@@ -3,6 +3,7 @@ const path = require('path');
 const { scanDirectory, ensureDir, copyFile, deleteFile, getFileNameWithoutExt, fileExists, getFileType, computeFileHash } = require('../utils/fileUtils');
 const ManifestService = require('./manifestService');
 const { readKeyExif } = require('./exifService');
+const { CancelError } = require('./taskManager');
 
 // 有限并发执行：对 items 数组每个元素执行 async fn，并发度 concurrency
 async function runWithConcurrency(items, concurrency, asyncFn) {
@@ -15,6 +16,22 @@ async function runWithConcurrency(items, concurrency, asyncFn) {
   }
   const workers = Array(Math.min(concurrency, items.length)).fill(0).map(worker);
   await Promise.all(workers);
+}
+
+// 构建导入阶段进度对象
+function _buildProgress(totalFiles, processedFiles, currentFile, startTime) {
+  const elapsedTime = (Date.now() - startTime) / 1000;
+  const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
+  const remainingFiles = totalFiles - processedFiles;
+  const estimatedTimeRemaining = avgTimePerFile * remainingFiles;
+  return {
+    total: totalFiles,
+    processed: processedFiles,
+    remaining: remainingFiles,
+    currentFile: currentFile,
+    estimatedTimeRemaining: Math.round(estimatedTimeRemaining),
+    percentage: Math.round((processedFiles / totalFiles) * 100)
+  };
 }
 
 class FileService {
@@ -105,20 +122,59 @@ class FileService {
   }
 
   // 从存储卡导入照片（增量导入，支持哈希去重、EXIF 读取、按 EXIF 时间归档、双盘镜像）
+  // 接入 TaskManager：支持暂停/恢复/取消，进度通过 ctx 推送
+  // ctx 由 taskManager._createContext 创建，包含：
+  //   - waitIfPaused()：协作式暂停，被 pause 时阻塞直到恢复或取消
+  //   - isCancelled()：是否被取消
+  //   - updateProgress(progress)：推送导入阶段进度
+  //   - updateMirrorProgress(progress)：推送镜像阶段进度
+  //   - recordProcessedHash(hash)：记录已处理文件 hash（恢复时跳过，避免重复计算）
+  //   - wasProcessed(hash)：判断是否已处理过（任务恢复时跳过已处理文件）
   // options: { archiveByExif = false, mirrorPath = null }
-  async importFromCard(sourcePath, progressCallback = null, smartNaming = false, options = {}) {
+  async importFromCard(sourcePath, ctx = null, smartNaming = false, options = {}) {
     const { archiveByExif = false, mirrorPath = null } = options;
+
+    // 兼容旧调用方式：ctx 为函数时视为 progressCallback
+    const isLegacyCallback = typeof ctx === 'function';
+    const progressCallback = isLegacyCallback ? ctx : null;
+    const taskCtx = isLegacyCallback ? null : ctx;
+
+    // 任务取消检查辅助：被取消时抛 CancelError
+    const checkCancel = async () => {
+      if (taskCtx) {
+        await taskCtx.waitIfPaused();
+        if (taskCtx.isCancelled()) throw new CancelError('任务已取消');
+      }
+    };
+
+    // 推送导入阶段进度
+    const pushProgress = (progress) => {
+      if (taskCtx) {
+        taskCtx.updateProgress(progress);
+      } else if (progressCallback) {
+        progressCallback(progress);
+      }
+    };
+
+    // 推送镜像阶段进度
+    const pushMirrorProgress = (progress) => {
+      if (taskCtx) {
+        taskCtx.updateMirrorProgress(progress);
+      }
+    };
 
     console.log('开始扫描目录:', sourcePath);
     console.log('归档策略 archiveByExif:', archiveByExif, '镜像盘 mirrorPath:', mirrorPath || '无');
 
     // 确保清单已初始化（首次访问会触发扫描并生成清单，便于哈希去重）
     await this.manifest.initFromScan();
+    await checkCancel();
 
     // 扫描存储卡中的所有媒体文件
     const files = await scanDirectory(sourcePath);
 
     console.log(`扫描完成，找到 ${files.length} 个媒体文件`);
+    await checkCancel();
 
     const results = {
       jpg: [],
@@ -140,30 +196,26 @@ class FileService {
     // 如果没有文件，立即返回结果
     if (totalFiles === 0) {
       console.log('没有找到媒体文件，导入结束');
-      if (progressCallback) {
-        progressCallback({
-          total: 0,
-          processed: 0,
-          remaining: 0,
-          currentFile: '',
-          estimatedTimeRemaining: 0,
-          percentage: 100
-        });
-      }
+      pushProgress({
+        total: 0,
+        processed: 0,
+        remaining: 0,
+        currentFile: '',
+        estimatedTimeRemaining: 0,
+        percentage: 100
+      });
       return results;
     }
 
     // 发送初始进度
-    if (progressCallback) {
-      progressCallback({
-        total: totalFiles,
-        processed: 0,
-        remaining: totalFiles,
-        currentFile: '准备开始...',
-        estimatedTimeRemaining: 0,
-        percentage: 0
-      });
-    }
+    pushProgress({
+      total: totalFiles,
+      processed: 0,
+      remaining: totalFiles,
+      currentFile: '准备开始...',
+      estimatedTimeRemaining: 0,
+      percentage: 0
+    });
 
     // 智能命名：按子文件夹分组，使用每个文件的最后一级文件夹名称作为前缀
     const folderCounters = {};  // 每个子文件夹独立计数器
@@ -208,8 +260,27 @@ class FileService {
     const IMPORT_CONCURRENCY = 8;
     await runWithConcurrency(files, IMPORT_CONCURRENCY, async (file) => {
       try {
+        // 任务恢复时跳过已处理文件（避免重复计算 hash 和复制）
+        // 注意：这里先计算 hash 用于判断是否已处理
+        await checkCancel();
+
         // 1. 计算 SHA-256 哈希
         const hash = await computeFileHash(file.path);
+
+        // 任务恢复优化：若本次任务已处理过该 hash，直接跳过
+        if (taskCtx && taskCtx.wasProcessed(hash)) {
+          results.skipped.push({
+            originalPath: file.path,
+            name: file.name,
+            size: file.size,
+            reason: 'already_processed_in_task',
+            hash: hash
+          });
+          // 推进进度计数
+          processedFiles++;
+          pushProgress(_buildProgress(totalFiles, processedFiles, file.name, startTime));
+          return;
+        }
 
         // 2. 哈希去重：命中清单则跳过
         const existed = await this.manifest.findByHash(hash);
@@ -279,10 +350,15 @@ class FileService {
                 exif: exif
               });
             }
+            // 记录已处理 hash（恢复时跳过）
+            if (taskCtx) taskCtx.recordProcessedHash(hash);
           } else {
             // 5. 目标路径不存在或内容不同：自动重命名避免覆盖，再复制
             const finalTargetPath = await resolveAvailablePath(targetPath);
             const finalRelPath = path.relative(this.basePath, finalTargetPath).replace(/\\/g, '/');
+
+            // 复制前再次检查取消
+            await checkCancel();
 
             // 6. 复制文件到主仓库
             const copyResult = await copyFile(file.path, finalTargetPath);
@@ -314,9 +390,13 @@ class FileService {
                 exif: exif
               });
             }
+            // 记录已处理 hash（恢复时跳过）
+            if (taskCtx) taskCtx.recordProcessedHash(hash);
           }
         }
       } catch (error) {
+        // CancelError 向上传播，不归入 errors
+        if (error.name === 'CancelError') throw error;
         results.errors.push({
           file: file.name,
           error: error.message
@@ -326,27 +406,14 @@ class FileService {
 
       // 更新进度（processedFiles++ 在单线程下是原子的）
       processedFiles++;
-      if (progressCallback) {
-        const elapsedTime = (Date.now() - startTime) / 1000;
-        const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
-        const remainingFiles = totalFiles - processedFiles;
-        const estimatedTimeRemaining = avgTimePerFile * remainingFiles;
-
-        progressCallback({
-          total: totalFiles,
-          processed: processedFiles,
-          remaining: remainingFiles,
-          currentFile: file.name,
-          estimatedTimeRemaining: Math.round(estimatedTimeRemaining),
-          percentage: Math.round((processedFiles / totalFiles) * 100)
-        });
-      }
+      pushProgress(_buildProgress(totalFiles, processedFiles, file.name, startTime));
     });
 
     // 统一保存清单
     await this.manifest.save();
 
     // Task 5: 双盘镜像（主导入完成后，若提供 mirrorPath，并发复制到镜像盘）
+    // 镜像阶段独立推送进度，前端进度条切换为"镜像备份中"
     if (mirrorPath) {
       const allImported = [
         ...results.jpg,
@@ -354,7 +421,19 @@ class FileService {
         ...results.video
       ];
 
+      // 推送镜像阶段初始进度
+      pushMirrorProgress({
+        total: allImported.length,
+        processed: 0,
+        currentFile: '准备开始镜像备份...',
+        percentage: 0
+      });
+
+      let mirroredCount = 0;
       await runWithConcurrency(allImported, IMPORT_CONCURRENCY, async (item) => {
+        // 镜像阶段也支持暂停/取消
+        await checkCancel();
+
         try {
           if (!item.relPath) return;
           const mirrorTarget = path.join(mirrorPath, item.relPath);
@@ -367,6 +446,7 @@ class FileService {
             relPath: item.relPath
           });
         } catch (error) {
+          if (error.name === 'CancelError') throw error;
           results.mirrorErrors.push({
             originalPath: item.originalPath,
             newPath: item.newPath,
@@ -375,6 +455,15 @@ class FileService {
           });
           console.error(`  镜像失败: ${item.newPath}`, error.message);
         }
+
+        // 更新镜像进度
+        mirroredCount++;
+        pushMirrorProgress({
+          total: allImported.length,
+          processed: mirroredCount,
+          currentFile: item.relPath || item.name || '',
+          percentage: Math.round((mirroredCount / allImported.length) * 100)
+        });
       });
     }
 

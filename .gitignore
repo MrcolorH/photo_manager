@@ -11,6 +11,9 @@ config/
 .env.local
 .env.production
 
+# Runtime data (task manager current task pointer)
+backend/.runtime/
+
 # Logs
 *.log
 npm-debug.log*

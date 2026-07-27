@@ -35,7 +35,10 @@ import {
   SettingOutlined,
   DatabaseOutlined,
   FolderAddOutlined,
-  MinusCircleOutlined
+  MinusCircleOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
+  StopOutlined
 } from '@ant-design/icons';
 import { importApi } from '../api';
 import { useRepo } from '../contexts/RepoContext';
@@ -44,6 +47,22 @@ const { Option } = Select;
 
 const { Step } = Steps;
 
+const initialProgress = {
+  total: 0,
+  processed: 0,
+  remaining: 0,
+  currentFile: '',
+  estimatedTimeRemaining: 0,
+  percentage: 0
+};
+
+const initialMirrorProgress = {
+  total: 0,
+  processed: 0,
+  currentFile: '',
+  percentage: 0
+};
+
 const ImportPage = () => {
   const [modal, modalContextHolder] = Modal.useModal();
   const [sourcePath, setSourcePath] = useState('');
@@ -51,17 +70,19 @@ const ImportPage = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
-  
+
   // 进度信息
-  const [progressInfo, setProgressInfo] = useState({
-    total: 0,
-    processed: 0,
-    remaining: 0,
-    currentFile: '',
-    estimatedTimeRemaining: 0,
-    percentage: 0
-  });
-  
+  const [progressInfo, setProgressInfo] = useState(initialProgress);
+  // 镜像阶段进度
+  const [mirrorProgress, setMirrorProgress] = useState(initialMirrorProgress);
+
+  // 任务管理相关状态
+  const [taskId, setTaskId] = useState(null);
+  const [taskStatus, setTaskStatus] = useState(null);     // running | paused | completed | cancelled | failed
+  const [taskPhase, setTaskPhase] = useState('pending');  // pending | scan | import | mirror | done | error
+  const [actionLoading, setActionLoading] = useState(false); // 暂停/恢复/取消按钮 loading
+  const eventSourceRef = useRef(null);
+
   // 存储仓库相关
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
@@ -84,9 +105,95 @@ const ImportPage = () => {
       setCurrentRepoId(selectedRepo);
     }
   }, [selectedRepo]);
-  
+
   // 存储卡路径选择
   const [sourcePathSelecting, setSourcePathSelecting] = useState(false);
+
+  // 建立 SSE 订阅任务进度
+  const attachSSE = (id) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    const es = importApi.streamTaskProgress(id, {
+      onMessage: (data, source) => {
+        if (data.type === 'progress') {
+          setTaskStatus(data.data.status);
+          setTaskPhase(data.data.phase);
+          if (data.data.progress) setProgressInfo(data.data.progress);
+          if (data.data.mirrorProgress) setMirrorProgress(data.data.mirrorProgress);
+        } else if (data.type === 'complete') {
+          setTaskStatus('completed');
+          setTaskPhase('done');
+          setImportResult(data.data);
+          setCurrentStep(2);
+          setImporting(false);
+          source.close();
+          eventSourceRef.current = null;
+          localStorage.removeItem('importTaskId');
+          setTaskId(null);
+        } else if (data.type === 'cancelled') {
+          setTaskStatus('cancelled');
+          setImporting(false);
+          source.close();
+          eventSourceRef.current = null;
+          localStorage.removeItem('importTaskId');
+          setTaskId(null);
+          message.info('任务已取消，已复制文件保留在仓库中');
+          setCurrentStep(0);
+        } else if (data.type === 'error') {
+          setTaskStatus('failed');
+          setImporting(false);
+          source.close();
+          eventSourceRef.current = null;
+          localStorage.removeItem('importTaskId');
+          setTaskId(null);
+          message.error('任务失败: ' + (data.error || '未知错误'));
+          setCurrentStep(0);
+        }
+      },
+      onError: (err) => {
+        console.error('SSE 错误:', err.message);
+      }
+    });
+    eventSourceRef.current = es;
+  };
+
+  // 组件挂载时检查是否有活跃任务（切 tab/刷新/应用重启后自动恢复进度）
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await importApi.getActiveTask();
+        if (res.data.success && res.data.data) {
+          const task = res.data.data;
+          setTaskId(task.taskId);
+          setTaskStatus(task.status);
+          setTaskPhase(task.phase || 'pending');
+          setProgressInfo(task.progress || initialProgress);
+          setMirrorProgress(task.mirrorProgress || initialMirrorProgress);
+          localStorage.setItem('importTaskId', task.taskId);
+          // 进入"导入中"步骤
+          setCurrentStep(1);
+          setImporting(true);
+          // 建立 SSE 接续进度
+          attachSSE(task.taskId);
+        } else {
+          // 没有活跃任务，清理 localStorage
+          localStorage.removeItem('importTaskId');
+        }
+      } catch (err) {
+        console.error('获取活跃任务失败:', err);
+      }
+    })();
+
+    // 卸载时关闭 SSE（切 tab/刷新场景，任务在后端继续执行）
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
 
   // 处理存储卡路径的文件夹选择（使用后端接口）
   const handleSourceFolderSelect = async () => {
@@ -280,49 +387,92 @@ const ImportPage = () => {
 
     setImporting(true);
     setCurrentStep(1);
-
+    setImportResult(null);
+    setTaskPhase('pending');
+    setTaskStatus('running');
     // 重置进度信息
-    setProgressInfo({
-      total: 0,
-      processed: 0,
-      remaining: 0,
-      currentFile: '',
-      estimatedTimeRemaining: 0,
-      percentage: 0
-    });
+    setProgressInfo(initialProgress);
+    setMirrorProgress(initialMirrorProgress);
 
     try {
-      // 设置进度回调
-      importApi.setProgressCallback((progress) => {
-        setProgressInfo(progress);
-      });
-
-      // Task 7.4：传入 archiveByExif 和 mirrorPath
       const effectiveMirrorPath = mirrorEnabled ? mirrorPath.trim() : null;
-      const res = await importApi.importFromCard(
+      const res = await importApi.createTask(
         sourcePath.trim(),
         selectedRepo,
         smartNaming,
         archiveByExif,
         effectiveMirrorPath
       );
-      
+
       if (res.data.success) {
-        setImportResult(res.data.data);
-        setCurrentStep(2);
-        message.success('导入完成！');
+        const newTaskId = res.data.data.taskId;
+        setTaskId(newTaskId);
+        localStorage.setItem('importTaskId', newTaskId);
+        // 建立 SSE 订阅进度
+        attachSSE(newTaskId);
       } else {
-        message.error(res.data.error || '导入失败');
+        message.error(res.data.error || '创建导入任务失败');
+        setImporting(false);
         setCurrentStep(0);
       }
     } catch (error) {
-      message.error('导入失败: ' + (error.response?.data?.error || error.message));
-      setCurrentStep(0);
-    } finally {
+      message.error('创建导入任务失败: ' + (error.response?.data?.error || error.message));
       setImporting(false);
-      // 清除进度回调
-      importApi.setProgressCallback(null);
+      setCurrentStep(0);
     }
+  };
+
+  // 暂停任务
+  const handlePause = async () => {
+    if (!taskId) return;
+    setActionLoading(true);
+    try {
+      await importApi.pauseTask(taskId);
+      setTaskStatus('paused');
+      message.success('任务已暂停');
+    } catch (err) {
+      message.error('暂停失败: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 恢复任务
+  const handleResume = async () => {
+    if (!taskId) return;
+    setActionLoading(true);
+    try {
+      await importApi.resumeTask(taskId);
+      setTaskStatus('running');
+      message.success('任务已恢复');
+    } catch (err) {
+      message.error('恢复失败: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 取消任务（带确认）
+  const handleCancel = () => {
+    if (!taskId) return;
+    modal.confirm({
+      title: '确认取消导入任务',
+      content: '取消后任务将停止，但已复制的文件会保留在仓库中，下次重新导入会自动跳过这些文件。是否确认取消？',
+      okText: '确认取消',
+      cancelText: '继续导入',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setActionLoading(true);
+        try {
+          await importApi.cancelTask(taskId);
+          // SSE 会推送 cancelled 消息，由 onMessage 处理后续 UI 切换
+        } catch (err) {
+          message.error('取消失败: ' + (err.response?.data?.error || err.message));
+        } finally {
+          setActionLoading(false);
+        }
+      }
+    });
   };
 
   const formatFileSize = (bytes) => {
@@ -576,11 +726,23 @@ const ImportPage = () => {
       {currentStep === 1 && (
         <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
           <Spin size="large" style={{ marginBottom: 24 }} />
-          <h3>正在导入中...</h3>
-          
+          <h3>
+            {taskStatus === 'paused'
+              ? (taskPhase === 'mirror' ? '镜像备份已暂停' : '导入已暂停')
+              : (taskPhase === 'mirror' ? '正在镜像备份...' : '正在导入中...')}
+          </h3>
+
           {/* 状态提示 */}
           <div style={{ marginBottom: 24 }}>
-            {progressInfo.total === 0 && progressInfo.percentage === 0 ? (
+            {taskStatus === 'paused' ? (
+              <Alert
+                message={taskPhase === 'mirror' ? '镜像备份已暂停' : '导入任务已暂停'}
+                description="点击恢复按钮继续执行，或取消任务终止导入"
+                type="warning"
+                showIcon
+                style={{ maxWidth: 500, margin: '0 auto' }}
+              />
+            ) : progressInfo.total === 0 && progressInfo.percentage === 0 ? (
               <Alert
                 message="正在扫描存储卡中的媒体文件..."
                 description="系统正在查找 JPG、RAW 和视频文件，请稍候"
@@ -601,7 +763,7 @@ const ImportPage = () => {
                 showIcon
                 style={{ maxWidth: 500, margin: '0 auto' }}
               />
-            ) : progressInfo.processed === progressInfo.total && progressInfo.total > 0 ? (
+            ) : progressInfo.processed === progressInfo.total && progressInfo.total > 0 && taskPhase !== 'mirror' ? (
               <Alert
                 message="文件处理完成"
                 description="正在整理导入结果..."
@@ -611,8 +773,8 @@ const ImportPage = () => {
               />
             ) : null}
           </div>
-          
-          {/* 进度统计 */}
+
+          {/* 进度统计（导入阶段） */}
           <Row gutter={[16, 16]} style={{ marginTop: 32, marginBottom: 32 }}>
             <Col span={6}>
               <Statistic
@@ -646,9 +808,9 @@ const ImportPage = () => {
               />
             </Col>
           </Row>
-          
+
           {/* 当前处理的文件 */}
-          {progressInfo.currentFile && progressInfo.total > 0 && (
+          {progressInfo.currentFile && progressInfo.total > 0 && taskPhase !== 'mirror' && (
             <div style={{ marginBottom: 16, color: 'var(--muted)' }}>
               {progressInfo.processed < progressInfo.total ? (
                 <>
@@ -667,15 +829,71 @@ const ImportPage = () => {
               )}
             </div>
           )}
-          
-          {/* 进度条 */}
-          <Progress 
-            percent={progressInfo.percentage} 
-            status={progressInfo.total === 0 && progressInfo.percentage === 100 ? 'exception' : 'active'}
+
+          {/* 导入阶段进度条 */}
+          <Progress
+            percent={progressInfo.percentage}
+            status={taskStatus === 'paused' ? 'normal' : (progressInfo.total === 0 && progressInfo.percentage === 100 ? 'exception' : 'active')}
             style={{ maxWidth: 600, margin: '0 auto' }}
             format={(percent) => progressInfo.total === 0 ? (progressInfo.percentage === 100 ? '无文件' : '扫描中...') : `${percent}% (${progressInfo.processed}/${progressInfo.total})`}
           />
-          
+
+          {/* 镜像阶段进度条 */}
+          {taskPhase === 'mirror' && mirrorProgress.total > 0 && (
+            <div style={{ maxWidth: 600, margin: '24px auto 0' }}>
+              <div style={{ marginBottom: 8, color: 'var(--muted)', fontSize: 13 }}>
+                镜像备份中: <strong style={{ color: 'var(--text)' }}>{mirrorProgress.currentFile}</strong>
+                <span style={{ marginLeft: 8, fontSize: 12 }}>
+                  第 {mirrorProgress.processed} 个，共 {mirrorProgress.total} 个
+                </span>
+              </div>
+              <Progress
+                percent={mirrorProgress.percentage}
+                status={taskStatus === 'paused' ? 'normal' : 'active'}
+                strokeColor={{ from: '#108ee9', to: '#87d068' }}
+                format={(percent) => `${percent}% (${mirrorProgress.processed}/${mirrorProgress.total})`}
+              />
+            </div>
+          )}
+
+          {/* 任务控制按钮组 */}
+          <div style={{ marginTop: 32 }}>
+            <Space size="middle">
+              {taskStatus === 'running' && (
+                <Button
+                  icon={<PauseCircleOutlined />}
+                  onClick={handlePause}
+                  loading={actionLoading}
+                  size="large"
+                >
+                  暂停
+                </Button>
+              )}
+              {taskStatus === 'paused' && (
+                <Button
+                  type="primary"
+                  icon={<PlayCircleOutlined />}
+                  onClick={handleResume}
+                  loading={actionLoading}
+                  size="large"
+                >
+                  恢复
+                </Button>
+              )}
+              {(taskStatus === 'running' || taskStatus === 'paused') && (
+                <Button
+                  danger
+                  icon={<StopOutlined />}
+                  onClick={handleCancel}
+                  loading={actionLoading}
+                  size="large"
+                >
+                  取消任务
+                </Button>
+              )}
+            </Space>
+          </div>
+
           {/* 底部提示 */}
           <div style={{ marginTop: 24 }}>
             {progressInfo.total === 0 && progressInfo.percentage === 100 ? (
@@ -684,9 +902,13 @@ const ImportPage = () => {
               </Button>
             ) : (
               <p style={{ color: 'var(--muted)' }}>
-                {progressInfo.total > 0 
-                  ? '正在扫描存储卡并复制文件，请稍候' 
-                  : '正在扫描文件夹中的媒体文件，请稍候...'}
+                {taskStatus === 'paused'
+                  ? '任务已暂停，可随时恢复或取消'
+                  : taskPhase === 'mirror'
+                    ? '正在将导入的文件镜像备份到独立目录'
+                    : progressInfo.total > 0
+                      ? '正在扫描存储卡并复制文件，可随时暂停'
+                      : '正在扫描文件夹中的媒体文件，请稍候...'}
               </p>
             )}
           </div>
@@ -866,10 +1088,24 @@ const ImportPage = () => {
           <Divider />
 
           <Space>
-            <Button type="primary" onClick={() => {
-              setCurrentStep(0);
+            <Button type="primary" onClick={async () => {
+              // 清理后端已结束的任务记录，允许新建下一个任务
+              if (taskId) {
+                try {
+                  await importApi.clearTask(taskId);
+                } catch (err) {
+                  console.warn('清理任务记录失败:', err);
+                }
+              }
+              setTaskId(null);
+              setTaskStatus(null);
+              setTaskPhase('pending');
               setImportResult(null);
               setSourcePath('');
+              setProgressInfo(initialProgress);
+              setMirrorProgress(initialMirrorProgress);
+              localStorage.removeItem('importTaskId');
+              setCurrentStep(0);
             }}>
               继续导入
             </Button>

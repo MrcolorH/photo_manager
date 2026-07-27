@@ -13,39 +13,31 @@ const REPOS_CONFIG_PATH = path.join(CONFIG_DIR, 'repos.json');
 const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
 
 // 读取存储仓库列表
+// 注意：本应用不预设备用默认仓库。首次安装后若无 repos.json 或仓库列表为空，
+// 返回空数组，由前端引导用户手动添加（避免自动写入 C 盘等系统目录）。
 async function getRepos() {
   try {
     const data = await fs.readFile(REPOS_CONFIG_PATH, 'utf8');
-    return JSON.parse(data);
+    const repos = JSON.parse(data);
+    return Array.isArray(repos) ? repos : [];
   } catch {
-    const defaultRepo = {
-      id: 'default',
-      name: '默认仓库',
-      path: process.env.PHOTO_BASE_PATH || getDefaultPhotoPath(),
-      isDefault: true
-    };
-    return [defaultRepo];
+    return [];
   }
-}
-
-function getDefaultPhotoPath() {
-  if (process.platform === 'win32') {
-    return path.join(require('os').homedir(), 'Pictures', 'CameraPhotos');
-  }
-  return '/Users/colorh/Pictures/相机照片';
 }
 
 // 获取指定仓库的FileService实例
 async function getFileService(repoId) {
   const repos = await getRepos();
-  const repo = repoId 
+  const repo = repoId
     ? repos.find(r => r.id === repoId)
     : repos.find(r => r.isDefault) || repos[0];
-  
+
   if (!repo) {
-    throw new Error('未找到指定的存储仓库');
+    const err = new Error('未配置可用仓库，请先到「仓库配置」页面添加仓库');
+    err.code = 'NO_REPO';
+    throw err;
   }
-  
+
   return new FileService(repo.path);
 }
 

@@ -92,10 +92,13 @@ function startBackend() {
     STANDALONE: 'true',
     ELECTRON_STANDALONE: 'true',
     CONFIG_DIR: configDir,
+    // 让后端知道可写的用户数据目录（用于 .runtime 持久化，避免写入只读的 .app 包）
+    ELECTRON_USER_DATA: app.getPath('userData'),
     FFMPEG_PATH: getFfmpegPath(resourcesPath),
     EXIFTOOL_PATH: getExiftoolPath(resourcesPath),
     PHOTO_BASE_PATH: path.join(app.getPath('pictures'), 'CameraPhotos'),
-    DEFAULT_IMPORT_PATH: getWindowsDrives()[0] || 'C:\\'
+    // 平台分支：Mac 用 /Volumes（外接 SD 卡挂载点），Windows 用盘符
+    DEFAULT_IMPORT_PATH: getDefaultImportPath()
   };
 
   // fork 后端子进程
@@ -312,22 +315,25 @@ function getFfmpegPath(resourcesPath) {
 }
 
 function getExiftoolPath(resourcesPath) {
-  // Windows: 优先使用 exiftool-vendored.exe
-  const vendoredExe = path.join(__dirname, '..', 'backend', 'node_modules', 'exiftool-vendored.exe', 'bin', 'exiftool.exe');
-  if (fs.existsSync(vendoredExe)) {
-    return vendoredExe;
+  if (process.platform === 'win32') {
+    // Windows: 优先使用 exiftool-vendored.exe
+    const vendoredExe = path.join(__dirname, '..', 'backend', 'node_modules', 'exiftool-vendored.exe', 'bin', 'exiftool.exe');
+    if (fs.existsSync(vendoredExe)) {
+      return vendoredExe;
+    }
+    // 如果已打包到 resources 中 (Windows)
+    const bundled = path.join(resourcesPath, 'exiftool.exe');
+    if (fs.existsSync(bundled)) {
+      return bundled;
+    }
+    return 'exiftool'; // 回退到系统 PATH
   }
   // macOS / Linux: 优先使用 exiftool-vendored.pl 的 Perl 脚本
   const vendoredPl = path.join(__dirname, '..', 'backend', 'node_modules', 'exiftool-vendored.pl', 'bin', 'exiftool');
   if (fs.existsSync(vendoredPl)) {
     return vendoredPl;
   }
-  // 如果已打包到 resources 中 (Windows)
-  const bundled = path.join(resourcesPath, 'exiftool.exe');
-  if (fs.existsSync(bundled)) {
-    return bundled;
-  }
-  return 'exiftool'; // 回退到系统 PATH
+  return 'exiftool'; // 回退到系统 PATH (Homebrew 等)
 }
 
 function getWindowsDrives() {
@@ -344,6 +350,16 @@ function getWindowsDrives() {
     // ignore
   }
   return drives.length > 0 ? drives : ['C:\\'];
+}
+
+// 默认导入路径按平台区分
+// - macOS: /Volumes（外接 SD 卡/USB 设备挂载点）
+// - Windows: 第一个可用盘符
+// - Linux: 根目录
+function getDefaultImportPath() {
+  if (process.platform === 'darwin') return '/Volumes';
+  if (process.platform === 'win32') return getWindowsDrives()[0] || 'C:\\';
+  return '/';
 }
 
 // ============ 系统托盘 ============

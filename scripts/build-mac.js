@@ -22,13 +22,29 @@ console.log('  相机照片管理系统 - macOS 构建脚本');
 console.log('========================================');
 
 // Step 1: 检查图标文件
-console.log('\n[1/6] 检查图标文件...');
+console.log('\n[1/7] 检查图标文件...');
 const iconPng = path.join(ROOT, 'electron', 'assets', 'app-icon.png');
 if (!fs.existsSync(iconPng)) {
   console.error('❌ 缺少 app-icon.png，请先运行 node scripts/generate-all-icons.js');
   process.exit(1);
 }
 console.log('✅ 图标文件已就绪');
+
+// Step 1.5: 检查并修复 Mac 版 ffmpeg 可执行权限
+console.log('\n[1.5/7] 检查 ffmpeg 权限...');
+const ffmpegMac = path.join(ROOT, 'resources', 'ffmpeg');
+if (fs.existsSync(ffmpegMac)) {
+  try {
+    run(`chmod +x "${ffmpegMac}"`);
+    console.log('✅ ffmpeg 可执行权限已设置');
+  } catch (e) {
+    console.warn('⚠️  chmod ffmpeg 失败，视频缩略图可能不可用:', e.message);
+  }
+} else {
+  console.warn('⚠️  resources/ffmpeg 不存在，视频缩略图功能将不可用');
+  console.warn('   请从 https://evermeet.cx/ffmpeg/ 下载 macOS 版 ffmpeg');
+  console.warn('   并放置到 resources/ffmpeg');
+}
 
 // Step 2: 构建前端
 console.log('\n[2/6] 构建前端...');

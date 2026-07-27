@@ -63,138 +63,82 @@ export const settingsApi = {
 
 // 导入相关API
 export const importApi = {
-  // 从存储卡导入（使用 EventSource 进行实时进度跟踪）
-  importFromCard: (sourcePath, repoId, smartNaming = false, archiveByExif = false, mirrorPath = null) => {
-    return new Promise((resolve, reject) => {
-      // 构建完整的 URL
-      const baseUrl = window.location.origin;
-      let url = `${baseUrl}/api/import?sourcePath=${encodeURIComponent(sourcePath)}&repoId=${repoId || ''}`;
-      if (smartNaming) {
-        url += '&smartNaming=true';
+  // 创建导入任务（POST），返回 taskId
+  // 导入在后台异步执行，前端通过 streamTaskProgress 订阅进度
+  createTask: (sourcePath, repoId, smartNaming = false, archiveByExif = false, mirrorPath = null) =>
+    api.post('/import', {
+      sourcePath,
+      repoId: repoId || undefined,
+      smartNaming,
+      archiveByExif,
+      mirrorPath: mirrorPath || undefined
+    }),
+
+  // 获取当前活跃任务（running / paused / pending）
+  getActiveTask: () => api.get('/import/active'),
+
+  // 获取任务详情
+  getTask: (taskId) => api.get(`/import/${taskId}`),
+
+  // SSE 订阅任务进度（返回 EventSource 实例，调用方自行管理生命周期）
+  // 通过 onMessage 回调接收消息：{ type: 'progress'|'complete'|'cancelled'|'error', data }
+  streamTaskProgress: (taskId, { onMessage, onError } = {}) => {
+    const baseUrl = window.location.origin;
+    const url = `${baseUrl}/api/import/${taskId}/stream`;
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (onMessage) onMessage(data, eventSource);
+        // 终态消息由调用方负责关闭连接；这里也兜底关闭
+        if (['complete', 'cancelled', 'error'].includes(data.type)) {
+          // 调用方应在 onMessage 中处理，这里不强制关闭
+        }
+      } catch (err) {
+        console.error('解析 SSE 数据失败:', err);
+        if (onError) onError(err, eventSource);
       }
-      url += `&archiveByExif=${archiveByExif ? 'true' : 'false'}`;
-      if (mirrorPath) {
-        url += `&mirrorPath=${encodeURIComponent(mirrorPath)}`;
+    };
+
+    eventSource.onerror = (err) => {
+      // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+      // CLOSED 状态说明连接已彻底断开；CONNECTING 是浏览器自动重连，不需要 reject
+      if (eventSource.readyState === EventSource.CLOSED) {
+        if (onError) onError(new Error('SSE 连接已关闭'), eventSource);
       }
-      
-      console.log('开始 SSE 连接:', url);
-      
-      // 创建 EventSource 连接
-      const eventSource = new EventSource(url);
-      
-      let progressData = null;
-      let completeData = null;
-      let hasError = false;
-      
-      // 监听打开事件
-      eventSource.onopen = () => {
-        console.log('SSE 连接已建立');
-      };
-      
-      // 监听进度事件
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('收到 SSE 消息:', data.type);
-          
-          if (data.type === 'progress') {
-            progressData = data.data;
-            // 调用进度回调（如果有的话）
-            if (importApi._progressCallback) {
-              importApi._progressCallback(progressData);
-            }
-          } else if (data.type === 'complete') {
-            completeData = data.data;
-            console.log('导入完成');
-            eventSource.close();
-            resolve({ data: { success: true, data: completeData } });
-          } else if (data.type === 'error') {
-            console.error('导入错误:', data.error);
-            hasError = true;
-            eventSource.close();
-            reject(new Error(data.error));
-          }
-        } catch (error) {
-          console.error('解析 SSE 数据失败:', error);
-        }
-      };
-      
-      // 监听错误事件
-      eventSource.onerror = (error) => {
-        console.error('SSE 连接错误:', error);
-        console.error('EventSource readyState:', eventSource.readyState);
-        
-        // 如果已经收到完成或错误消息，忽略此错误
-        if (hasError || completeData) {
-          return;
-        }
-        
-        // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
-        if (eventSource.readyState === EventSource.CLOSED) {
-          console.log('SSE 连接已关闭');
-        } else if (eventSource.readyState === EventSource.CONNECTING) {
-          console.log('SSE 正在重连...');
-          // 不要立即拒绝，让 EventSource 尝试重连
-          return;
-        } else {
-          console.log('SSE 连接中断');
-          eventSource.close();
-          if (!hasError && !completeData) {
-            reject(new Error('连接中断'));
-          }
-        }
-      };
-      
-      // 5分钟超时
-      const timeoutId = setTimeout(() => {
-        console.log('导入超时');
-        eventSource.close();
-        if (!completeData && !hasError) {
-          reject(new Error('导入超时（5分钟）'));
-        }
-      }, 300000);
-      
-      // 清理函数
-      const cleanup = () => {
-        clearTimeout(timeoutId);
-      };
-      
-      // 在 resolve 和 reject 时清理超时
-      const originalResolve = resolve;
-      const originalReject = reject;
-      
-      resolve = (value) => {
-        cleanup();
-        originalResolve(value);
-      };
-      
-      reject = (reason) => {
-        cleanup();
-        originalReject(reason);
-      };
-    });
+    };
+
+    return eventSource;
   },
-  
-  // 设置进度回调
-  setProgressCallback: (callback) => {
-    importApi._progressCallback = callback;
-  },
-  
+
+  // 暂停任务
+  pauseTask: (taskId) => api.post(`/import/${taskId}/pause`),
+
+  // 恢复任务
+  resumeTask: (taskId) => api.post(`/import/${taskId}/resume`),
+
+  // 取消任务
+  cancelTask: (taskId) => api.post(`/import/${taskId}/cancel`),
+
+  // 清理已结束的任务记录（允许新建下一个任务）
+  clearTask: (taskId) => api.delete(`/import/${taskId}`),
+
   // 获取默认导入路径
   getDefaultPath: () => api.get('/import/default-path'),
-  
+
   // 获取所有存储仓库
   getRepos: () => api.get('/import/repos'),
-  
+
   // 添加存储仓库
   addRepo: (data) => api.post('/import/repos', data),
-  
+
   // 删除存储仓库
   deleteRepo: (id) => api.delete(`/import/repos/${id}`),
-  
+
   // 设置默认仓库
   setDefaultRepo: (id) => api.put(`/import/repos/${id}/default`),
-  
+
   // 打开文件夹选择对话框
   selectFolder: () => api.get('/import/select-folder')
 };

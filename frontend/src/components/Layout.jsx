@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Statistic, Row, Col, Card, Collapse } from 'antd';
+import { Layout as AntLayout, Menu, Statistic, Row, Col, Card, Collapse, Modal } from 'antd';
 import {
   PictureOutlined,
   ImportOutlined,
@@ -7,11 +7,12 @@ import {
   CameraOutlined,
   SettingOutlined,
   DashboardOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { photoApi } from '../api';
+import { photoApi, importApi } from '../api';
 import { useRepo } from '../contexts/RepoContext';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -31,6 +32,41 @@ const Layout = () => {
   useEffect(() => {
     fetchStorageInfo();
   }, [currentRepoId]);
+
+  // 首次使用引导：仅在 Layout 挂载时检查一次，仓库列表为空时弹窗提醒用户手动添加
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await importApi.getRepos();
+        if (cancelled) return;
+        if (res.data.success && (!res.data.data || res.data.data.length === 0)) {
+          Modal.warning({
+            title: '欢迎使用「拾光舱」',
+            icon: <ExclamationCircleOutlined />,
+            content: (
+              <div style={{ lineHeight: 1.7 }}>
+                <p style={{ marginBottom: 8 }}>
+                  检测到尚未配置任何照片存储仓库。为了正常使用导入和浏览功能，请先添加一个仓库目录。
+                </p>
+                <p style={{ marginBottom: 0, color: 'var(--muted)', fontSize: 13 }}>
+                  提示：建议选择非系统盘（如 D 盘、外接硬盘）作为照片存储位置；本应用不会为你预设备用仓库。
+                </p>
+              </div>
+            ),
+            okText: '去配置仓库',
+            cancelText: '稍后',
+            okCancel: true,
+            onOk: () => navigate('/settings'),
+            centered: true
+          });
+        }
+      } catch (err) {
+        console.error('首次使用检查失败:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchStorageInfo = async () => {
     try {

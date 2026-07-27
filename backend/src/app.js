@@ -8,6 +8,7 @@ const photoRoutes = require('./routes/photoRoutes');
 const importRoutes = require('./routes/importRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const lightHuntRoutes = require('./routes/lightHuntRoutes');
+const taskManager = require('./services/taskManager');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -28,44 +29,38 @@ const CONFIG_DIR = process.env.CONFIG_DIR || path.join(__dirname, '..', '..', 'c
 const REPOS_CONFIG_PATH_LOCAL = path.join(CONFIG_DIR, 'repos.json');
 
 // 读取存储仓库列表
+// 注意：本应用不为用户预设备用默认仓库（尤其禁止写入 C 盘）。
+// 首次安装后若无 repos.json 或仓库列表为空，返回空数组，由前端引导用户手动添加。
 function getRepos() {
   try {
     const data = fs.readFileSync(REPOS_CONFIG_PATH_LOCAL, 'utf8');
-    return JSON.parse(data);
+    const repos = JSON.parse(data);
+    return Array.isArray(repos) ? repos : [];
   } catch {
-    const defaultRepo = {
-      id: 'default',
-      name: '默认仓库',
-      path: process.env.PHOTO_BASE_PATH || getDefaultPhotoPath(),
-      isDefault: true
-    };
-    return [defaultRepo];
+    return [];
   }
-}
-
-function getDefaultPhotoPath() {
-  const platform = process.platform;
-  if (platform === 'win32') {
-    return path.join(require('os').homedir(), 'Pictures', 'CameraPhotos');
-  }
-  return '/Users/colorh/Pictures/相机照片';
 }
 
 // 动态静态文件服务 - 根据 repo 参数提供不同仓库的文件
 app.use('/uploads', (req, res, next) => {
   const repoId = req.query.repo;
   const repos = getRepos();
-  
-  let targetPath;
+
+  let targetPath = null;
   if (repoId) {
     const repo = repos.find(r => r.id === repoId);
-    targetPath = repo ? repo.path : (process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片');
+    if (repo) targetPath = repo.path;
   } else {
     // 默认使用默认仓库
     const defaultRepo = repos.find(r => r.isDefault);
-    targetPath = defaultRepo ? defaultRepo.path : (process.env.PHOTO_BASE_PATH || '/Users/colorh/Pictures/相机照片');
+    if (defaultRepo) targetPath = defaultRepo.path;
   }
-  
+
+  // 无可用仓库时返回 404，避免 fallback 到任意系统路径
+  if (!targetPath) {
+    return res.status(404).json({ error: '未配置可用仓库，请先在仓库配置中添加仓库' });
+  }
+
   // 使用 express.static 提供文件服务
   express.static(targetPath)(req, res, next);
 });
@@ -101,8 +96,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: '服务器内部错误' });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`服务器运行在 http://localhost:${PORT}`);
+  // 启动时恢复上次未完成的任务（running → paused，等待用户手动恢复）
+  try {
+    await taskManager.loadAndRecover();
+  } catch (err) {
+    console.error('[TaskManager] 启动恢复失败:', err);
+  }
 });
 
 module.exports = app;
