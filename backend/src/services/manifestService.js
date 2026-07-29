@@ -143,12 +143,15 @@ class ManifestService {
     return null;
   }
 
-  // 初始化清单：若清单文件已存在且 files 非空直接返回；否则扫描仓库 jpg/raw/video 三个子目录，
+  // 初始化清单：若清单文件已存在且 files 非空，同步文件系统中未被追踪的文件后返回；
+  // 否则扫描仓库 jpg/raw/video 三个子目录，
   // 为每个文件生成条目 { hash: null, exif: null, size, mtime }，写入清单并 save
   async initFromScan() {
     const existing = await this.load();
     if (existing.files && Object.keys(existing.files).length > 0) {
-      return existing;
+      // 清单已有条目，但仍需同步文件系统中未被追踪的文件（如手动拷入、导入中断残留等）
+      await this._syncUntrackedFiles();
+      return await this.load();
     }
 
     // 扫描三个分类目录
@@ -178,6 +181,54 @@ class ManifestService {
 
     await this.save();
     return await this.load();
+  }
+
+  // 同步文件系统中未被清单追踪的文件：扫描 jpg/raw/video 目录，
+  // 对不在清单中的文件添加条目（hash: null, exif: 从文件读取）
+  // 解决清单与文件系统不一致导致照片浏览缺失的问题
+  async _syncUntrackedFiles() {
+    const { readKeyExif } = require('./exifService');
+    const categories = ['jpg', 'raw', 'video'];
+    let added = 0;
+
+    for (const category of categories) {
+      const categoryPath = path.join(this.basePath, category);
+      let files = [];
+      try {
+        files = await scanDirectory(categoryPath);
+      } catch (error) {
+        continue;
+      }
+
+      for (const file of files) {
+        const relPath = this._normalizeRelPath(path.relative(this.basePath, file.path));
+        const existingEntry = await this.getEntry(relPath);
+        if (existingEntry) continue;
+
+        // 未追踪文件：读取 EXIF（仅 jpg/raw），添加到清单
+        let exif = null;
+        if (category === 'jpg' || category === 'raw') {
+          try {
+            exif = await readKeyExif(file.path);
+          } catch (e) {
+            // EXIF 读取失败，保留 null
+          }
+        }
+
+        await this.addEntry(relPath, {
+          hash: null,
+          size: file.size,
+          mtime: new Date(file.modifiedTime).toISOString(),
+          exif: exif
+        });
+        added++;
+      }
+    }
+
+    if (added > 0) {
+      await this.save();
+      console.log(`[Manifest] 同步发现 ${added} 个未追踪文件，已添加到清单`);
+    }
   }
 
   // 返回 files 对象（供 getPhotos 使用）

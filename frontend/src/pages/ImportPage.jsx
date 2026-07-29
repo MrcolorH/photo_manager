@@ -86,7 +86,7 @@ const ImportPage = () => {
   // 存储仓库相关
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
-  const { setCurrentRepoId } = useRepo();
+  const { setCurrentRepoId, bumpStorageVersion } = useRepo();
   const [repoModalVisible, setRepoModalVisible] = useState(false);
   const [manageModalVisible, setManageModalVisible] = useState(false);
   const [form] = Form.useForm();
@@ -132,6 +132,8 @@ const ImportPage = () => {
           eventSourceRef.current = null;
           localStorage.removeItem('importTaskId');
           setTaskId(null);
+          // 导入完成，刷新存储统计
+          bumpStorageVersion();
         } else if (data.type === 'cancelled') {
           setTaskStatus('cancelled');
           setImporting(false);
@@ -141,6 +143,8 @@ const ImportPage = () => {
           setTaskId(null);
           message.info('任务已取消，已复制文件保留在仓库中');
           setCurrentStep(0);
+          // 取消时也可能已部分写入文件，刷新存储统计
+          bumpStorageVersion();
         } else if (data.type === 'error') {
           setTaskStatus('failed');
           setImporting(false);
@@ -430,6 +434,8 @@ const ImportPage = () => {
       await importApi.pauseTask(taskId);
       setTaskStatus('paused');
       message.success('任务已暂停');
+      // 暂停时已复制的文件已写入仓库，刷新存储统计
+      bumpStorageVersion();
     } catch (err) {
       message.error('暂停失败: ' + (err.response?.data?.error || err.message));
     } finally {

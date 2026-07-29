@@ -44,7 +44,7 @@ const SyncDeletePage = () => {
   // 仓库相关
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
-  const { setCurrentRepoId } = useRepo();
+  const { setCurrentRepoId, bumpStorageVersion } = useRepo();
 
   // 当仓库切换时同步到全局上下文
   useEffect(() => {
@@ -157,6 +157,8 @@ const SyncDeletePage = () => {
             setDeleteResult(res.data.data);
             message.success(`成功删除 ${res.data.data.success.length} 个文件`);
             fetchOrphanRaws();
+            // 批量删除 RAW 后刷新存储统计
+            bumpStorageVersion();
           }
         } catch (error) {
           message.error('删除失败');

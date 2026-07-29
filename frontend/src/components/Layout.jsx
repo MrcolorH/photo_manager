@@ -21,7 +21,7 @@ const { Header, Sider, Content } = AntLayout;
 const Layout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentRepoId } = useRepo();
+  const { currentRepoId, storageVersion } = useRepo();
   const { isDark, toggleTheme } = useTheme();
   const [storageInfo, setStorageInfo] = useState({
     jpg: { count: 0, sizeFormatted: '0 B' },
@@ -29,9 +29,10 @@ const Layout = () => {
     video: { count: 0, sizeFormatted: '0 B' }
   });
 
+  // 仓库切换或仓库内数据变化（导入/删除/重建清单等）时刷新存储统计
   useEffect(() => {
     fetchStorageInfo();
-  }, [currentRepoId]);
+  }, [currentRepoId, storageVersion]);
 
   // 首次使用引导：仅在 Layout 挂载时检查一次，仓库列表为空时弹窗提醒用户手动添加
   useEffect(() => {
@@ -239,9 +240,9 @@ const Layout = () => {
           
           {/* 存储统计 - 固定在底部 */}
           <div style={{ borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-            <Collapse 
-              ghost 
-              defaultActiveKey={[]}
+            <Collapse
+              ghost
+              defaultActiveKey={['1']}
               items={[
                 {
                   key: '1',

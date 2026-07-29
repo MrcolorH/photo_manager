@@ -67,7 +67,7 @@ const PhotoGallery = () => {
   // 仓库相关
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
-  const { setCurrentRepoId } = useRepo();
+  const { setCurrentRepoId, bumpStorageVersion } = useRepo();
 
   // 当仓库切换时同步到全局上下文
   useEffect(() => {
@@ -323,6 +323,8 @@ const PhotoGallery = () => {
         } else {
           fetchPhotos();
         }
+        // 删除后刷新存储统计
+        bumpStorageVersion();
       }
     } catch (error) {
       message.error('删除失败');
@@ -590,6 +592,8 @@ const PhotoGallery = () => {
       setSelectedPhotos([]);
       setSelectAll(false);
       fetchPhotos();
+      // 批量删除后刷新存储统计
+      bumpStorageVersion();
     } catch (error) {
       message.error('批量删除失败');
     }
@@ -743,6 +747,8 @@ const PhotoGallery = () => {
               duration: 5
             });
             fetchPhotos();
+            // 重建清单后刷新存储统计
+            bumpStorageVersion();
           }
         } catch (error) {
           notification.error({
@@ -811,6 +817,8 @@ const PhotoGallery = () => {
                 placement: 'topRight'
               });
               fetchPhotos();
+              // 清理缺失条目后刷新存储统计
+              bumpStorageVersion();
             }
           } catch (error) {
             notification.error({
