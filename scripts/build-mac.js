@@ -116,8 +116,7 @@ try {
 console.log('\n[6/7] 检查并生成标准 DMG 安装包...');
 const version = require('../package.json').version;
 const dmgTargets = [
-  { archDir: 'mac', suffix: '' },
-  { archDir: 'mac-arm64', suffix: '-arm64' }
+  { archDir: 'mac-arm64', suffix: '' }
 ];
 for (const { archDir, suffix } of dmgTargets) {
   const dmgName = `Shiguang Capsule-${version}${suffix}.dmg`;

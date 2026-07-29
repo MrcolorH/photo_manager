@@ -392,6 +392,25 @@
   box-shadow: var(--lh-shadow-sm);
 }
 
+/* 窄 pill：默认隐藏灰色备注，hover 时浮层展开显示完整信息 */
+.lh-pill.short .lh-pill-desc {
+  display: none;
+}
+
+.lh-pill.short:hover,
+.lh-pill.short.selected {
+  width: auto !important;
+  min-width: max-content;
+  max-width: none;
+  z-index: 20;
+  padding-right: 14px;
+}
+
+.lh-pill.short:hover .lh-pill-desc,
+.lh-pill.short.selected .lh-pill-desc {
+  display: inline;
+}
+
 .lh-pill.selected {
   box-shadow: 0 0 0 2px var(--card), 0 0 0 4px currentColor;
 }

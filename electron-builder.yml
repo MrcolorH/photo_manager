@@ -29,7 +29,6 @@ mac:
   target:
     - target: dmg
       arch:
-        - x64
         - arm64
   icon: electron/assets/app-icon.png
   category: public.app-category.photography

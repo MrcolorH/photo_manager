@@ -313,10 +313,17 @@ export default function LightHunt() {
     try {
       await lightHuntApi.removeCity(city.id);
       message.success(`${city.name} 已删除`);
+
+      // 立即从本地 state 移除，让下拉框内容立刻刷新
+      const remaining = savedCities.filter((c) => c.id !== city.id);
+      setSavedCities(remaining);
+
       if (selectedCity?.id === city.id) {
-        const next = savedCities.find((c) => c.id !== city.id) || builtinCities.find((c) => c.id === 'hangzhou') || builtinCities[0];
-        setSelectedCity(next || null);
+        const next = remaining[0] || builtinCities.find((c) => c.id === 'hangzhou') || builtinCities[0] || null;
+        setSelectedCity(next);
       }
+
+      // 再向后端同步一次，保证数据一致
       fetchCities();
     } catch (err) {
       message.error('删除失败：' + (err.response?.data?.error || err.message));
@@ -366,11 +373,13 @@ export default function LightHunt() {
     const meta = TYPE_META[w.type];
     const leftPct = (w.start / 24) * 100;
     const widthPct = Math.max(((w.end - w.start) / 24) * 100, 5);
+    const isShort = widthPct < 18;
     return (
       <button
         key={w.id}
         type="button"
-        className={`lh-pill lh-pill-${meta.cls} ${selectedWindowId === w.id ? 'selected' : ''}`}
+        title={`${meta.name} ${w.label} ${w.desc}`}
+        className={`lh-pill lh-pill-${meta.cls} ${selectedWindowId === w.id ? 'selected' : ''} ${isShort ? 'short' : ''}`}
         style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
         onClick={() => setSelectedWindowId(w.id)}
         aria-label={`${meta.name} ${w.label} ${w.desc}`}
