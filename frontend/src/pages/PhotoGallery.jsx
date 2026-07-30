@@ -1585,15 +1585,10 @@ const PhotoGallery = () => {
         onCancel={() => { setExifModalVisible(false); setExifData(null); }}
         footer={[
           <Button
-            key="full"
-            type="primary"
-            loading={exifLoading}
-            onClick={handleLoadFullExif}
-            disabled={!cachedPhotos[previewIndex] || (exifData && exifData._full)}
+            key="close"
+            style={{ marginTop: 12 }}
+            onClick={() => { setExifModalVisible(false); setExifData(null); }}
           >
-            {(exifData && exifData._full) ? '已加载完整 EXIF' : '查看完整 EXIF'}
-          </Button>,
-          <Button key="close" onClick={() => { setExifModalVisible(false); setExifData(null); }}>
             关闭
           </Button>
         ]}
