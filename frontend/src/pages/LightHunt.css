@@ -788,3 +788,82 @@
     display: none;
   }
 }
+
+/* ===== 位置确认弹窗 ===== */
+.lh-loc-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lh-loc-map {
+  border-radius: var(--lh-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  line-height: 0;
+}
+
+.lh-loc-map iframe {
+  display: block;
+  border: 0;
+  width: 100%;
+}
+
+.lh-loc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lh-loc-coords {
+  display: flex;
+  gap: 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lh-loc-source {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: 10px;
+  line-height: 1.6;
+}
+
+.lh-loc-source.gps {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+
+.lh-loc-source.ip {
+  background: rgba(255, 152, 0, 0.15);
+  color: #e8913a;
+}
+
+.lh-loc-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+.lh-loc-name svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--lh-sunset);
+}
+
+.lh-loc-tip {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 10px 14px;
+  background: rgba(255, 152, 0, 0.08);
+  border-radius: var(--lh-radius-sm);
+  line-height: 1.5;
+}

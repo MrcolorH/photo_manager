@@ -9,10 +9,10 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Select, Spin, message, Modal, Form, Input, InputNumber, ConfigProvider,
+  Select, Spin, message, Modal, Form, Input, InputNumber, ConfigProvider, Button,
 } from 'antd';
 import {
-  ThunderboltOutlined, ReloadOutlined, PlusOutlined, StarOutlined, StarFilled, DeleteOutlined, CheckOutlined,
+  ThunderboltOutlined, ReloadOutlined, PlusOutlined, StarOutlined, StarFilled, DeleteOutlined, CheckOutlined, AimOutlined, EnvironmentOutlined,
 } from '@ant-design/icons';
 import { lightHuntApi } from '../api';
 import { useTheme } from '../contexts/ThemeContext';
@@ -168,6 +168,11 @@ export default function LightHunt() {
   const [selectedWindowId, setSelectedWindowId] = useState(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addForm] = Form.useForm();
+  const [locating, setLocating] = useState(false);
+  const [locConfirmOpen, setLocConfirmOpen] = useState(false);
+  const [pendingLocation, setPendingLocation] = useState(null); // { lat, lon, source }
+  const [reverseName, setReverseName] = useState('');
+  const [geocoding, setGeocoding] = useState(false);
 
   // 初始化：拉城市列表
   const fetchCities = useCallback(async () => {
@@ -275,6 +280,106 @@ export default function LightHunt() {
       if (e.errorFields) return;
       message.error('添加失败：' + (e.response?.data?.error || e.message));
     }
+  };
+
+  // ─── 获取当前位置 ──────────────────────────────────────────────────────
+  // 构建 OpenStreetMap 嵌入地图 URL
+  const buildOsmEmbedUrl = (lat, lon, delta = 0.008) => {
+    const left = (lon - delta).toFixed(6);
+    const right = (lon + delta).toFixed(6);
+    const bottom = (lat - delta).toFixed(6);
+    const top = (lat + delta).toFixed(6);
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${left},${bottom},${right},${top}&layer=mapnik&marker=${lat},${lon}`;
+  };
+
+  // Nominatim 反向地理编码：坐标 → 地名
+  const reverseGeocode = async (lat, lon) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=zh`,
+      );
+      const data = await res.json();
+      if (data.display_name) return data.display_name;
+      return '未知位置';
+    } catch (e) {
+      return '位置解析失败';
+    }
+  };
+
+  // 从 Nominatim display_name 中提取简洁城市名（用于回填城市名）
+  const extractCityName = (displayName) => {
+    if (!displayName) return '';
+    const parts = displayName.split(',').map((p) => p.trim()).filter(Boolean);
+    // display_name 格式通常：街道/区, 市, 省, 国家
+    // 优先取市级名称，否则取倒数第2个（通常是省/州）
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i].length <= 12) return parts[i];
+    }
+    return parts[0] || '';
+  };
+
+  // 打开位置确认弹窗
+  const openLocationConfirm = (lat, lon, source) => {
+    setPendingLocation({ lat, lon, source });
+    setReverseName('');
+    setLocConfirmOpen(true);
+    setGeocoding(true);
+    reverseGeocode(lat, lon).then((name) => {
+      setReverseName(name);
+      setGeocoding(false);
+    });
+  };
+
+  // IP 定位兜底（当浏览器 geolocation 不可用或被拒时）
+  const fallbackToIpLocation = async () => {
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      const data = await res.json();
+      if (data.latitude && data.longitude) {
+        setLocating(false);
+        openLocationConfirm(data.latitude, data.longitude, 'ip');
+      } else {
+        throw new Error(data.reason || 'IP 定位未返回坐标');
+      }
+    } catch (e) {
+      setLocating(false);
+      message.error('获取当前位置失败：' + (e.message || '请检查网络或浏览器定位权限'));
+    }
+  };
+
+  // 点击"获取当前位置"按钮
+  const handleGetLocation = () => {
+    setLocating(true);
+    if (!navigator.geolocation) {
+      fallbackToIpLocation();
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const { latitude, longitude } = pos.coords;
+        openLocationConfirm(latitude, longitude, 'gps');
+      },
+      (err) => {
+        // geolocation 失败（权限拒绝/超时等），尝试 IP 定位兜底
+        fallbackToIpLocation();
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  };
+
+  // 确认使用当前位置 → 回填到表单
+  const handleConfirmLocation = () => {
+    if (!pendingLocation) return;
+    const { lat, lon } = pendingLocation;
+    addForm.setFieldsValue({
+      lat: parseFloat(lat.toFixed(4)),
+      lon: parseFloat(lon.toFixed(4)),
+      name: addForm.getFieldValue('name') || extractCityName(reverseName),
+    });
+    setLocConfirmOpen(false);
+    setPendingLocation(null);
+    message.success('已填入当前位置，请确认后点击「添加」');
   };
 
   // 切换收藏状态（仅内置城市使用：加入/移出收藏夹）
@@ -735,8 +840,63 @@ export default function LightHunt() {
               <InputNumber style={{ width: '100%' }} placeholder="如 100.23" step={0.01} />
             </Form.Item>
           </div>
+          <Form.Item style={{ marginBottom: 0, marginTop: 4 }}>
+            <Button
+              type="dashed"
+              icon={<AimOutlined />}
+              loading={locating}
+              onClick={handleGetLocation}
+              block
+            >
+              获取当前位置
+            </Button>
+          </Form.Item>
         </Form>
-        </Modal>
+      </Modal>
+
+      {/* 位置确认 Modal */}
+      <Modal
+        title="确认当前位置"
+        open={locConfirmOpen}
+        onOk={handleConfirmLocation}
+        onCancel={() => { setLocConfirmOpen(false); setPendingLocation(null); }}
+        okText="确认使用"
+        cancelText="取消"
+        width={560}
+      >
+        {pendingLocation && (
+          <div className="lh-loc-confirm">
+            <div className="lh-loc-map">
+              <iframe
+                src={buildOsmEmbedUrl(pendingLocation.lat, pendingLocation.lon)}
+                width="100%"
+                height="280"
+                frameBorder="0"
+                title="位置地图"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="lh-loc-info">
+              <div className="lh-loc-coords">
+                <span>纬度 {pendingLocation.lat.toFixed(4)}°</span>
+                <span>经度 {pendingLocation.lon.toFixed(4)}°</span>
+                <span className={`lh-loc-source ${pendingLocation.source}`}>
+                  {pendingLocation.source === 'gps' ? 'GPS定位' : 'IP定位'}
+                </span>
+              </div>
+              <div className="lh-loc-name">
+                <EnvironmentOutlined />
+                {geocoding ? '正在解析地名…' : (reverseName || '未知位置')}
+              </div>
+            </div>
+            {pendingLocation.source === 'ip' && (
+              <div className="lh-loc-tip">
+                IP 定位精度较低，请核对地图标记是否与实际位置一致后再确认。
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
       </div>
     </ConfigProvider>
   );
