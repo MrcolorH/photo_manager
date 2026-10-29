@@ -42,7 +42,8 @@ import {
   CameraOutlined,
   DownOutlined,
   LoadingOutlined,
-  SafetyCertificateOutlined
+  SafetyCertificateOutlined,
+  SyncOutlined
 } from '@ant-design/icons';
 import { PhotoSlider } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -127,6 +128,9 @@ const PhotoGallery = () => {
 
   // 完整性校验状态
   const [verifyingIntegrity, setVerifyingIntegrity] = useState(false);
+
+  // 扫描未追踪文件状态
+  const [syncingFiles, setSyncingFiles] = useState(false);
 
   // 跨页预览缓存
   const [cachedPhotos, setCachedPhotos] = useState([]);
@@ -839,6 +843,28 @@ const PhotoGallery = () => {
     }
   };
 
+  // 显式扫描并同步文件系统中未被清单追踪的新增文件
+  const handleSyncFiles = async () => {
+    if (!selectedRepo) return;
+    setSyncingFiles(true);
+    message.loading({ content: '正在扫描文件系统新增照片...', key: 'syncFiles', duration: 0 });
+    try {
+      const res = await photoApi.syncFiles(selectedRepo);
+      if (res.data.success) {
+        message.success({ content: '扫描完成，已同步新增文件', key: 'syncFiles' });
+        fetchPhotos();
+        bumpStorageVersion();
+      }
+    } catch (error) {
+      message.error({
+        content: '扫描失败: ' + (error.response?.data?.error || error.message),
+        key: 'syncFiles'
+      });
+    } finally {
+      setSyncingFiles(false);
+    }
+  };
+
   // Task 9.2：打开 EXIF 面板
   const handleOpenExif = async () => {
     const currentPhoto = cachedPhotos[previewIndex];
@@ -990,26 +1016,33 @@ const PhotoGallery = () => {
               menu={{
                 items: [
                   {
+                    key: 'sync',
+                    icon: syncingFiles ? <LoadingOutlined /> : <SyncOutlined />,
+                    label: '扫描新增文件',
+                    disabled: syncingFiles || refreshingExif || rebuildingManifest || verifyingIntegrity
+                  },
+                  {
                     key: 'exif',
                     icon: refreshingExif ? <LoadingOutlined /> : <CameraOutlined />,
                     label: '刷新 EXIF',
-                    disabled: refreshingExif || rebuildingManifest || verifyingIntegrity
+                    disabled: syncingFiles || refreshingExif || rebuildingManifest || verifyingIntegrity
                   },
                   {
                     key: 'integrity',
                     icon: verifyingIntegrity ? <LoadingOutlined /> : <SafetyCertificateOutlined />,
                     label: '完整性校验',
-                    disabled: refreshingExif || rebuildingManifest || verifyingIntegrity
+                    disabled: syncingFiles || refreshingExif || rebuildingManifest || verifyingIntegrity
                   },
                   {
                     key: 'manifest',
                     icon: rebuildingManifest ? <LoadingOutlined /> : <DatabaseOutlined />,
                     label: '重建清单',
-                    disabled: refreshingExif || rebuildingManifest || verifyingIntegrity,
+                    disabled: syncingFiles || refreshingExif || rebuildingManifest || verifyingIntegrity,
                     danger: true
                   }
                 ],
                 onClick: ({ key }) => {
+                  if (key === 'sync') handleSyncFiles();
                   if (key === 'exif') handleRefreshExif();
                   if (key === 'integrity') handleVerifyIntegrity();
                   if (key === 'manifest') handleRebuildManifest();
@@ -1293,7 +1326,8 @@ const PhotoGallery = () => {
                                 <Image
                                   alt={photo.name}
                                   src={photo.thumbnailUrl}
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  loading="lazy"
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'opacity 0.25s ease' }}
                                   fallback="/placeholder-raw.svg"
                                   preview={false}
                                   placeholder={
@@ -1317,7 +1351,8 @@ const PhotoGallery = () => {
                                 <Image
                                   alt={photo.name}
                                   src={photo.thumbnailUrl}
-                                  style={{ width: '100%', height: 120, objectFit: 'cover' }}
+                                  loading="lazy"
+                                  style={{ width: '100%', height: 120, objectFit: 'cover', transition: 'opacity 0.25s ease' }}
                                   fallback="/placeholder-raw.svg"
                                   preview={false}
                                   placeholder={

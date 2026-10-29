@@ -9,7 +9,7 @@ const execPromise = util.promisify(exec);
 const EXIFTOOL_PATH = process.env.EXIFTOOL_PATH || path.join(__dirname, '../../node_modules/exiftool-vendored.pl/bin/exiftool');
 
 // 提取RAW文件中的嵌入预览图
-async function extractEmbeddedPreview(rawPath, width = 300) {
+async function extractEmbeddedPreview(rawPath, width = 300, format = 'webp', quality = 80) {
   console.log('\n--- 开始提取嵌入预览 ---');
   console.log('rawPath:', rawPath);
   console.log('exiftool路径:', EXIFTOOL_PATH);
@@ -39,11 +39,13 @@ async function extractEmbeddedPreview(rawPath, width = 300) {
             console.log('✅ 确认为有效的JPEG数据');
             
             // 调整大小后返回（rotate()自动根据EXIF方向旋转）
-            const thumbnailBuffer = await sharp(stdout)
+            const pipeline = sharp(stdout)
               .rotate()
-              .resize(width, null, { withoutEnlargement: true })
-              .jpeg({ quality: 80 })
-              .toBuffer();
+              .resize(width, null, { withoutEnlargement: true });
+            
+            const thumbnailBuffer = format === 'webp'
+              ? await pipeline.webp({ quality, effort: 4 }).toBuffer()
+              : await pipeline.jpeg({ quality }).toBuffer();
             
             return thumbnailBuffer;
           } else {
@@ -73,13 +75,15 @@ async function extractEmbeddedPreview(rawPath, width = 300) {
 }
 
 // 使用sharp解码RAW文件
-async function decodeWithSharp(rawPath, width = 300, quality = 80) {
+async function decodeWithSharp(rawPath, width = 300, quality = 80, format = 'webp') {
   try {
-    const thumbnailBuffer = await sharp(rawPath)
+    const pipeline = sharp(rawPath)
       .rotate()
-      .resize(width, null, { withoutEnlargement: true })
-      .jpeg({ quality })
-      .toBuffer();
+      .resize(width, null, { withoutEnlargement: true });
+    
+    const thumbnailBuffer = format === 'webp'
+      ? await pipeline.webp({ quality, effort: 4 }).toBuffer()
+      : await pipeline.jpeg({ quality }).toBuffer();
     
     return thumbnailBuffer;
   } catch (error) {
@@ -89,11 +93,12 @@ async function decodeWithSharp(rawPath, width = 300, quality = 80) {
 }
 
 // 生成RAW缩略图（三级降级策略）
-async function generateRawThumbnail(rawPath, width = 300, quality = 80) {
+async function generateRawThumbnail(rawPath, width = 300, quality = 80, format = 'webp') {
   console.log('=== RAW缩略图生成开始 ===');
   console.log('rawPath:', rawPath);
   console.log('width:', width);
   console.log('quality:', quality);
+  console.log('format:', format);
   console.log('rawPath类型:', typeof rawPath);
   
   if (!rawPath || typeof rawPath !== 'string') {
@@ -102,7 +107,7 @@ async function generateRawThumbnail(rawPath, width = 300, quality = 80) {
   }
   
   // 第1级：尝试提取嵌入预览
-  const embeddedPreview = await extractEmbeddedPreview(rawPath, width);
+  const embeddedPreview = await extractEmbeddedPreview(rawPath, width, format, quality);
   if (embeddedPreview) {
     console.log('✅ 使用嵌入预览图生成缩略图');
     return embeddedPreview;
@@ -111,7 +116,7 @@ async function generateRawThumbnail(rawPath, width = 300, quality = 80) {
   // 第2级：使用sharp解码
   try {
     console.log('使用sharp解码RAW文件');
-    const thumbnail = await decodeWithSharp(rawPath, width, quality);
+    const thumbnail = await decodeWithSharp(rawPath, width, quality, format);
     return thumbnail;
   } catch (error) {
     // 第3级：返回null，由调用方生成占位图

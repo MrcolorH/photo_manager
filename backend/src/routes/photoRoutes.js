@@ -3,6 +3,8 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs').promises;
 const FileService = require('../services/fileService');
+const fileServicePool = require('../services/fileServicePool');
+const thumbnailCacheService = require('../services/thumbnailCacheService');
 const { readFullExif } = require('../services/exifService');
 
 // 存储仓库配置文件路径 - 与 app.js / importRoutes.js 保持一致
@@ -25,7 +27,7 @@ async function getRepos() {
   }
 }
 
-// 获取指定仓库的FileService实例
+// 获取指定仓库配置与FileService实例池单例
 async function getFileService(repoId) {
   const repos = await getRepos();
   const repo = repoId
@@ -38,7 +40,7 @@ async function getFileService(repoId) {
     throw err;
   }
 
-  return new FileService(repo.path);
+  return fileServicePool.get(repo.path);
 }
 
 // 获取照片列表（支持 EXIF 多维筛选）
@@ -142,6 +144,7 @@ router.delete('/:id', async (req, res) => {
     
     const fileService = await getFileService(repoId);
     const result = await fileService.deletePhoto(id, { syncRaw: syncRaw === 'true' });
+    fileServicePool.invalidate(fileService.basePath);
     
     res.json({
       success: true,
@@ -169,6 +172,7 @@ router.post('/batch-delete-raws', async (req, res) => {
 
     const fileService = await getFileService(repoId);
     const result = await fileService.deleteRawFiles(fileIds);
+    fileServicePool.invalidate(fileService.basePath);
 
     res.json({
       success: true,
@@ -208,6 +212,7 @@ router.post('/rebuild-manifest', async (req, res) => {
     const { repoId } = req.body || {};
     const fileService = await getFileService(repoId);
     const result = await fileService.rebuildManifest();
+    fileServicePool.invalidate(fileService.basePath);
 
     res.json({
       success: true,
@@ -279,10 +284,13 @@ router.get('/preview', async (req, res) => {
   }
 });
 
-// 获取缩略图（动态生成，不保存文件）
+// 获取缩略图（多级持久化缓存架构）
+// 1. 优先命中外置盘持久化缓存 ({repoPath}/.shiguang/thumbnails/{hash}_{width}.webp)
+// 2. 命中后以 30 天强缓存直接 sendFile (2~5ms)
+// 3. 未命中则进入受控并发队列解码原图，生成 WebP 异步落盘并流式返回
 router.get('/thumbnail', async (req, res) => {
   try {
-    const { path: filePath, width = 300, quality = 80 } = req.query;
+    const { path: filePath, width = 300, quality = 80, format = 'webp', repoId } = req.query;
     
     if (!filePath) {
       return res.status(400).json({
@@ -294,138 +302,201 @@ router.get('/thumbnail', async (req, res) => {
     // 解码 URL 编码的路径
     const decodedPath = decodeURIComponent(filePath);
     
-    // 检查文件是否存在
+    // 获取文件元信息（mtime 与 size，用于生成特征签名）
+    let stat;
     try {
-      await fs.access(decodedPath);
+      stat = await fs.stat(decodedPath);
     } catch {
       return res.status(404).json({
         success: false,
         error: '文件不存在'
       });
     }
-    
-    // 获取文件扩展名
-    const ext = path.extname(decodedPath).toLowerCase();
-    
-    // 如果是视频文件，使用 ffmpeg 提取首帧
-    if (['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)) {
-      const { spawn } = require('child_process');
-      
-      return new Promise((resolve) => {
-        let ffmpeg;
-        try {
-          ffmpeg = spawn(FFMPEG_PATH, [
-            '-i', decodedPath,
-            '-ss', '00:00:01',  // 从第1秒开始提取
-            '-vframes', '1',     // 只提取1帧
-            '-vf', `scale=${width}:-1`,  // 缩放到指定宽度
-            '-f', 'image2pipe',  // 输出到管道
-            '-vcodec', 'mjpeg',  // 使用 JPEG 编码
-            '-q:v', '5',         // 质量参数（1-31，越小质量越高）
-            'pipe:1'             // 输出到 stdout
-          ], {
-            stdio: ['ignore', 'pipe', 'pipe']
-          });
-        } catch (err) {
-          console.error('ffmpeg 启动失败:', err.message);
-          sendVideoPlaceholder(res, width);
-          resolve();
-          return;
-        }
-        
-        const chunks = [];
-        let errorOutput = '';
-        
-        ffmpeg.stdout.on('data', (chunk) => {
-          chunks.push(chunk);
-        });
-        
-        ffmpeg.stderr.on('data', (data) => {
-          errorOutput += data.toString();
-        });
-        
-        ffmpeg.on('close', (code) => {
-          if (code === 0 && chunks.length > 0) {
-            const buffer = Buffer.concat(chunks);
-            res.set({
-              'Content-Type': 'image/jpeg',
-              'Cache-Control': 'public, max-age=86400'
-            });
-            res.send(buffer);
-          } else {
-            console.error('ffmpeg 提取视频帧失败:', errorOutput.substring(0, 200));
-            sendVideoPlaceholder(res, width);
-          }
-          resolve();
-        });
-        
-        ffmpeg.on('error', (err) => {
-          console.error('ffmpeg 执行错误:', err.message);
-          sendVideoPlaceholder(res, width);
-          resolve();
-        });
-      });
-    }
-    
-    // 如果是 RAW 文件，使用专门的缩略图生成策略
-    const rawExtensions = ['.arw', '.cr2', '.cr3', '.nef', '.dng', '.orf', '.raf', '.rw2', '.raw'];
-    if (rawExtensions.includes(ext)) {
-      const { generateRawThumbnail } = require('../utils/rawThumbnail');
-      
-      try {
-        const thumbnailBuffer = await generateRawThumbnail(decodedPath, parseInt(width), parseInt(quality));
-        
-        if (thumbnailBuffer) {
-          // 成功生成缩略图
-          res.set({
-            'Content-Type': 'image/jpeg',
-            'Cache-Control': 'public, max-age=86400'
-          });
-          res.send(thumbnailBuffer);
-          return;
-        }
-      } catch (error) {
-        console.error('RAW缩略图生成异常:', error.message);
-      }
-      
-      // 如果生成失败，继续执行下面的占位图逻辑
-    }
-    
-    // 其他文件类型或RAW处理失败，使用sharp
-    const sharp = require('sharp');
-    try {
-      const thumbnailBuffer = await sharp(decodedPath)
-        .rotate()
-        .resize(parseInt(width), null, { withoutEnlargement: true })
-        .jpeg({ quality: parseInt(quality) })
-        .toBuffer();
-          
-      // 设置响应头
+
+    // 定位所属仓库
+    const repos = await getRepos();
+    const matchedRepo = repoId
+      ? repos.find(r => r.id === repoId)
+      : repos.find(r => decodedPath.startsWith(path.resolve(r.path))) || repos.find(r => r.isDefault) || repos[0];
+    const repoBasePath = matchedRepo ? matchedRepo.path : null;
+    const resolvedRepoId = matchedRepo ? matchedRepo.id : (repoId || 'default');
+
+    const targetWidth = parseInt(width, 10) || 300;
+    const targetQuality = parseInt(quality, 10) || 80;
+    const targetFormat = format === 'jpeg' || format === 'jpg' ? 'jpeg' : 'webp';
+
+    // 计算缓存文件目标路径
+    const { cachePath } = await thumbnailCacheService.getCacheFilePath(decodedPath, {
+      repoBasePath,
+      repoId: resolvedRepoId,
+      width: targetWidth,
+      format: targetFormat,
+      mtime: stat.mtimeMs,
+      size: stat.size
+    });
+
+    // 1. 检查外置盘持久化缓存
+    const isHit = await thumbnailCacheService.checkCache(cachePath);
+    if (isHit) {
       res.set({
-        'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=86400' // 缓存1天
+        'Content-Type': targetFormat === 'webp' ? 'image/webp' : 'image/jpeg',
+        'Cache-Control': 'public, max-age=2592000' // 30天浏览器强缓存
       });
-          
-      res.send(thumbnailBuffer);
-    } catch (error) {
-      console.error('文件转换失败:', error.message);
-      // 如果 sharp 不支持该格式,返回占位图
-      const fileExt = ext.toUpperCase().substring(1);
-      const placeholderSvg = `<svg width="${width}" height="200" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="#f0f0f0"/>
-        <text x="50%" y="45%" font-family="Arial" font-size="48" fill="#999" text-anchor="middle">📷</text>
-        <text x="50%" y="65%" font-family="Arial" font-size="16" fill="#999" text-anchor="middle">${fileExt} 文件</text>
-        <text x="50%" y="75%" font-family="Arial" font-size="12" fill="#bbb" text-anchor="middle">点击打开原图</text>
-      </svg>`;
-          
-      res.set({
-        'Content-Type': 'image/svg+xml',
-        'Cache-Control': 'public, max-age=86400'
-      });
-      res.send(placeholderSvg);
+      return res.sendFile(cachePath);
     }
+
+    // 2. 未命中：进入受控并发转码生成流程
+    const result = await thumbnailCacheService.generateThumbnail({
+      filePath: decodedPath,
+      width: targetWidth,
+      quality: targetQuality,
+      format: targetFormat
+    });
+
+    // 3. 异步持久化写入外置盘 .shiguang/thumbnails
+    if (!result.isPlaceholder && result.buffer) {
+      thumbnailCacheService.saveCache(cachePath, result.buffer).catch(() => {});
+    }
+
+    res.set({
+      'Content-Type': result.contentType,
+      'Cache-Control': result.isPlaceholder ? 'no-cache' : 'public, max-age=2592000'
+    });
+    return res.send(result.buffer);
   } catch (error) {
     console.error('生成缩略图失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 获取指定仓库的缩略图缓存统计
+router.get('/cache-stats', async (req, res) => {
+  try {
+    const { repoId } = req.query;
+    const repos = await getRepos();
+    const repo = repoId
+      ? repos.find(r => r.id === repoId)
+      : repos.find(r => r.isDefault) || repos[0];
+
+    if (!repo) {
+      return res.status(404).json({ success: false, error: '未找到指定仓库' });
+    }
+
+    const stats = await thumbnailCacheService.getCacheStats(repo.path, repo.id);
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('获取缓存统计失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 清空指定仓库的缩略图缓存
+router.post('/clear-cache', async (req, res) => {
+  try {
+    const { repoId } = req.body || {};
+    const repos = await getRepos();
+    const repo = repoId
+      ? repos.find(r => r.id === repoId)
+      : repos.find(r => r.isDefault) || repos[0];
+
+    if (!repo) {
+      return res.status(404).json({ success: false, error: '未找到指定仓库' });
+    }
+
+    const result = await thumbnailCacheService.clearCache(repo.path, repo.id);
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('清空缓存失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 后台异步批处理预热缩略图
+router.post('/preload-thumbnails', async (req, res) => {
+  try {
+    const { repoId, width = 300, quality = 80, format = 'webp' } = req.body || {};
+    const repos = await getRepos();
+    const repo = repoId
+      ? repos.find(r => r.id === repoId)
+      : repos.find(r => r.isDefault) || repos[0];
+
+    if (!repo) {
+      return res.status(404).json({ success: false, error: '未找到指定仓库' });
+    }
+
+    const fileService = fileServicePool.get(repo.path);
+    const allFiles = await fileService.manifest.getAllFiles();
+    const fileList = Object.entries(allFiles).map(([relPath, entry]) => ({
+      path: path.join(repo.path, relPath),
+      mtime: entry.mtime,
+      size: entry.size
+    }));
+
+    const task = await thumbnailCacheService.startPreload(repo.id, repo.path, fileList, {
+      width: parseInt(width, 10) || 300,
+      quality: parseInt(quality, 10) || 80,
+      format
+    });
+
+    res.json({
+      success: true,
+      data: task
+    });
+  } catch (error) {
+    console.error('启动缩略图预热失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 获取预热任务进度
+router.get('/preload-progress', async (req, res) => {
+  try {
+    const { repoId } = req.query;
+    const progress = thumbnailCacheService.getPreloadProgress(repoId);
+    res.json({
+      success: true,
+      data: progress
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 取消预热任务
+router.post('/cancel-preload', async (req, res) => {
+  try {
+    const { repoId } = req.body || {};
+    const cancelled = thumbnailCacheService.cancelPreload(repoId);
+    res.json({
+      success: true,
+      data: { cancelled }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 显式同步未追踪文件（当用户在界面点击刷新仓库时调用）
+router.post('/sync-files', async (req, res) => {
+  try {
+    const { repoId } = req.body || {};
+    const fileService = await getFileService(repoId);
+    const result = await fileService.syncUntrackedFiles();
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('同步未追踪文件失败:', error);
     res.status(500).json({
       success: false,
       error: error.message

@@ -12,7 +12,7 @@ class ManifestService {
     // 实例级内存缓存
     this._cache = null;
     this._cacheTime = 0;
-    this._cacheTTL = 30000; // 30 秒内存缓存
+    this._cacheTTL = 300000; // 5 分钟内存缓存（通过 invalidateCache 主动失效）
     // hash 反向索引：hash -> relPath，用于 O(1) 去重查找
     this._hashIndex = null;
   }
@@ -83,10 +83,9 @@ class ManifestService {
     await ensureDir(path.dirname(this.manifestPath));
     await fs.writeFile(this.manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 
-    // 清空缓存，下次 load 会重新读盘
-    this._cache = null;
-    this._cacheTime = 0;
-    this._hashIndex = null;
+    // 保留内存缓存并更新时间戳，避免刚写完马上又重新读盘
+    this._cache = manifest;
+    this._cacheTime = Date.now();
   }
 
   // 返回该相对路径的条目，不存在返回 undefined
@@ -143,15 +142,20 @@ class ManifestService {
     return null;
   }
 
-  // 初始化清单：若清单文件已存在且 files 非空，同步文件系统中未被追踪的文件后返回；
+  // 初始化清单：若清单文件已存在且 files 非空：
+  //   - forceSync=false（默认，浏览只读模式）：直接返回现有清单，绝不触发全盘递归扫描；
+  //   - forceSync=true（主动刷新模式）：同步文件系统中未被追踪的文件后返回；
   // 否则扫描仓库 jpg/raw/video 三个子目录，
   // 为每个文件生成条目 { hash: null, exif: null, size, mtime }，写入清单并 save
-  async initFromScan() {
+  async initFromScan(options = {}) {
+    const { forceSync = false } = options;
     const existing = await this.load();
     if (existing.files && Object.keys(existing.files).length > 0) {
-      // 清单已有条目，但仍需同步文件系统中未被追踪的文件（如手动拷入、导入中断残留等）
-      await this._syncUntrackedFiles();
-      return await this.load();
+      if (forceSync) {
+        await this._syncUntrackedFiles();
+        return await this.load();
+      }
+      return existing;
     }
 
     // 扫描三个分类目录
@@ -235,6 +239,12 @@ class ManifestService {
   async getAllFiles() {
     const manifest = await this.load();
     return manifest.files;
+  }
+
+  // 显式同步文件系统中的未追踪文件
+  async syncUntrackedFiles() {
+    await this._syncUntrackedFiles();
+    return await this.load();
   }
 
   // 清空内存缓存

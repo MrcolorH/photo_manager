@@ -49,7 +49,26 @@ export const photoApi = {
 
   // 重建清单：删除旧清单→重新扫描→读取 EXIF
   rebuildManifest: (repoId) =>
-    api.post('/photos/rebuild-manifest', { repoId })
+    api.post('/photos/rebuild-manifest', { repoId }),
+
+  // 获取缩略图缓存统计
+  getCacheStats: (repoId) => api.get('/photos/cache-stats', { params: { repoId } }),
+
+  // 清空仓库缩略图缓存
+  clearCache: (repoId) => api.post('/photos/clear-cache', { repoId }),
+
+  // 预热缩略图
+  preloadThumbnails: (repoId, options = {}) =>
+    api.post('/photos/preload-thumbnails', { repoId, ...options }),
+
+  // 获取预热任务进度
+  getPreloadProgress: (repoId) => api.get('/photos/preload-progress', { params: { repoId } }),
+
+  // 取消预热任务
+  cancelPreload: (repoId) => api.post('/photos/cancel-preload', { repoId }),
+
+  // 显式同步未追踪文件
+  syncFiles: (repoId) => api.post('/photos/sync-files', { repoId })
 };
 
 // 设置相关API

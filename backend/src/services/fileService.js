@@ -510,8 +510,8 @@ class FileService {
       return { photos: [], total: 0, page, pageSize };
     }
 
-    // 确保清单已初始化（首次访问会触发扫描并生成清单）
-    await this.manifest.initFromScan();
+    // 确保清单已初始化（只读模式直接返回，绝不触发全盘递归扫描；sync=true 时主动同步）
+    await this.manifest.initFromScan({ forceSync: options.sync === true });
     const allFiles = await this.manifest.getAllFiles();
 
     // 过滤出该分类的文件（清单 key 以 `${category}/` 开头）
@@ -533,7 +533,7 @@ class FileService {
           extension: ext,
           size: entry.size,
           modifiedTime: entry.mtime,
-          thumbnailUrl: `/api/photos/thumbnail?path=${encodeURIComponent(absolutePath)}`,  // 缩略图
+          thumbnailUrl: `/api/photos/thumbnail?path=${encodeURIComponent(absolutePath)}&repoId=${encodeURIComponent(repoId || '')}&format=webp`,  // 缩略图（支持 WebP 与持久化）
           url: `/api/photos/preview?path=${encodeURIComponent(absolutePath)}&repo=${repoId || ''}`,  // 原图
           exif: entry.exif  // 字段：取自清单条目，可能为 null
         };
@@ -1189,6 +1189,12 @@ class FileService {
       exifSuccess,
       exifFailed
     };
+  }
+
+  // 显式同步未追踪文件（当用户主动刷新仓库时调用）
+  async syncUntrackedFiles() {
+    this.invalidateScanCache();
+    return await this.manifest.syncUntrackedFiles();
   }
 }
 

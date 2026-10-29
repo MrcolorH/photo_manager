@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const FileService = require('../services/fileService');
+const fileServicePool = require('../services/fileServicePool');
 const taskManager = require('../services/taskManager');
 const fs = require('fs').promises;
 const path = require('path');
@@ -90,11 +91,13 @@ router.post('/', async (req, res) => {
 
     // 异步启动任务（不 await，立即返回 taskId 给前端）
     taskManager.start(taskId, async (ctx) => {
-      const fileService = new FileService(targetRepo.path);
+      const fileService = fileServicePool.get(targetRepo.path);
       const results = await fileService.importFromCard(sourcePath, ctx, !!smartNaming, {
         archiveByExif: !!archiveByExif,
         mirrorPath: mirrorPath || null
       });
+      // 导入完成，清空缓存使最新数据可见
+      fileServicePool.invalidate(targetRepo.path);
       return {
         jpgCount: results.jpg.length,
         rawCount: results.raw.length,

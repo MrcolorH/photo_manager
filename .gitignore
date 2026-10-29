@@ -39,6 +39,7 @@ resources/*.exe
 # IDE directories
 .lingma/
 .trae/
+.trae-html-share-packages/
 .qoder/
 
 # WorkBuddy project memory / working data
