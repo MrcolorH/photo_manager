@@ -308,7 +308,7 @@ const PhotoGallery = () => {
         selectedRepo
       );
       if (res.data.success) {
-        message.success('删除成功');
+        message.success(res.data.data?.alreadyMissing ? '已从图库清除失效记录' : '删除成功');
         setDeleteModalVisible(false);
         // 从选中列表中移除已删除的照片
         setSelectedPhotos(prev => prev.filter(id => id !== deletePhotoData.id));
@@ -672,8 +672,10 @@ const PhotoGallery = () => {
   const handleRefreshExif = async () => {
     if (!selectedRepo) return;
     setRefreshingExif(true);
+    message.loading({ content: '正在扫描并补录 EXIF 元数据，大图库请耐心等待...', key: 'refreshExif', duration: 0 });
     try {
       const res = await photoApi.refreshExif(selectedRepo, category);
+      message.destroy('refreshExif');
       if (res.data.success) {
         const { success, failed, alreadyHasExif, noExifFound, sampleExif, firstError } = res.data.data;
         console.log('[refreshExif] 返回结果:', res.data.data);
@@ -719,6 +721,7 @@ const PhotoGallery = () => {
         fetchPhotos();
       }
     } catch (error) {
+      message.destroy('refreshExif');
       notification.error({
         message: 'EXIF 补录失败',
         description: error.response?.data?.error || error.message,
@@ -735,13 +738,15 @@ const PhotoGallery = () => {
     if (!selectedRepo) return;
     modal.confirm({
       title: '重建清单',
-      content: '将删除当前仓库的清单文件并重新扫描所有文件、读取 EXIF。此操作可能需要一些时间，完成后照片预览和 EXIF 信息将恢复正常。是否继续？',
+      content: '将删除当前仓库的清单文件并重新扫描所有文件、读取 EXIF。对于包含大量照片的仓库，此操作需要一些时间，期间请勿关闭页面。是否继续？',
       okText: '确认重建',
       cancelText: '取消',
       onOk: async () => {
         setRebuildingManifest(true);
+        message.loading({ content: '正在全量扫描并重建清单，大图库耗时较长，请耐心等待...', key: 'rebuildManifest', duration: 0 });
         try {
           const res = await photoApi.rebuildManifest(selectedRepo);
+          message.destroy('rebuildManifest');
           if (res.data.success) {
             const { totalFiles, exifSuccess, exifFailed } = res.data.data;
             notification.success({
@@ -755,6 +760,7 @@ const PhotoGallery = () => {
             bumpStorageVersion();
           }
         } catch (error) {
+          message.destroy('rebuildManifest');
           notification.error({
             message: '重建清单失败',
             description: error.response?.data?.error || error.message,
@@ -772,15 +778,18 @@ const PhotoGallery = () => {
   const handleVerifyIntegrity = async () => {
     if (!selectedRepo) return;
     setVerifyingIntegrity(true);
+    message.loading({ content: '正在校验仓库文件完整性...', key: 'verifyIntegrity', duration: 0 });
     let report;
     try {
       const res = await photoApi.verifyIntegrity(selectedRepo, false);
+      message.destroy('verifyIntegrity');
       if (!res.data.success) {
         notification.error({ message: '完整性校验失败', description: res.data.error, placement: 'topRight' });
         return;
       }
       report = res.data.data;
     } catch (error) {
+      message.destroy('verifyIntegrity');
       notification.error({
         message: '完整性校验失败',
         description: error.response?.data?.error || error.message,
@@ -811,8 +820,10 @@ const PhotoGallery = () => {
         cancelText: '仅查看',
         onOk: async () => {
           setVerifyingIntegrity(true);
+          message.loading({ content: '正在从清单移除缺失条目...', key: 'cleanMissing', duration: 0 });
           try {
             const cleanRes = await photoApi.verifyIntegrity(selectedRepo, true);
+            message.destroy('cleanMissing');
             if (cleanRes.data.success) {
               const cleaned = cleanRes.data.data.cleaned || 0;
               notification.success({
@@ -825,6 +836,7 @@ const PhotoGallery = () => {
               bumpStorageVersion();
             }
           } catch (error) {
+            message.destroy('cleanMissing');
             notification.error({
               message: '清理失败',
               description: error.response?.data?.error || error.message,
@@ -843,27 +855,43 @@ const PhotoGallery = () => {
     }
   };
 
-  // 显式扫描并同步文件系统中未被清单追踪的新增文件
-  const handleSyncFiles = async () => {
+  // 主动刷新与双向同步：全库扫描新增文件 + 剔除已在外部删除的失效文件
+  const handleRefresh = async () => {
     if (!selectedRepo) return;
+    setSelectedPhotos([]);
+    setSelectAll(false);
     setSyncingFiles(true);
-    message.loading({ content: '正在扫描文件系统新增照片...', key: 'syncFiles', duration: 0 });
+    message.loading({ content: '正在同步图库并清理失效文件...', key: 'gallerySync', duration: 0 });
     try {
       const res = await photoApi.syncFiles(selectedRepo);
-      if (res.data.success) {
-        message.success({ content: '扫描完成，已同步新增文件', key: 'syncFiles' });
-        fetchPhotos();
+      if (res.data?.success) {
+        const { added = 0, pruned = 0 } = res.data.data || {};
+        if (added > 0 || pruned > 0) {
+          message.success({
+            content: `刷新完成：发现 ${added} 张新增照片，已清理 ${pruned} 张已删除照片`,
+            key: 'gallerySync',
+            duration: 3
+          });
+        } else {
+          message.success({ content: '图库已是最新状态', key: 'gallerySync', duration: 2 });
+        }
+        await fetchPhotos();
         bumpStorageVersion();
+      } else {
+        await fetchPhotos();
+        message.destroy('gallerySync');
       }
     } catch (error) {
-      message.error({
-        content: '扫描失败: ' + (error.response?.data?.error || error.message),
-        key: 'syncFiles'
-      });
+      console.error('双向同步失败，降级重新加载当前列表:', error);
+      await fetchPhotos();
+      message.destroy('gallerySync');
     } finally {
       setSyncingFiles(false);
     }
   };
+
+  // 兼容别名
+  const handleSyncFiles = handleRefresh;
 
   // Task 9.2：打开 EXIF 面板
   const handleOpenExif = async () => {
@@ -1002,23 +1030,20 @@ const PhotoGallery = () => {
           <Space.Compact>
             <Button
               icon={<ReloadOutlined />}
-              loading={loading}
-              onClick={() => {
-                setSelectedPhotos([]);
-                setSelectAll(false);
-                fetchPhotos();
-              }}
+              loading={loading || syncingFiles || refreshingExif || rebuildingManifest || verifyingIntegrity}
+              onClick={handleRefresh}
             >
               刷新
             </Button>
             <Dropdown
               trigger={['click']}
+              disabled={syncingFiles || refreshingExif || rebuildingManifest || verifyingIntegrity}
               menu={{
                 items: [
                   {
                     key: 'sync',
                     icon: syncingFiles ? <LoadingOutlined /> : <SyncOutlined />,
-                    label: '扫描新增文件',
+                    label: '双向同步全库',
                     disabled: syncingFiles || refreshingExif || rebuildingManifest || verifyingIntegrity
                   },
                   {
@@ -1050,7 +1075,10 @@ const PhotoGallery = () => {
               }}
               placement="bottomRight"
             >
-              <Button icon={<DownOutlined />} />
+              <Button
+                icon={<DownOutlined />}
+                loading={syncingFiles || refreshingExif || rebuildingManifest || verifyingIntegrity}
+              />
             </Dropdown>
           </Space.Compact>
         </Space>

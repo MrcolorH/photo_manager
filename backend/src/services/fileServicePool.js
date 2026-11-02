@@ -22,11 +22,19 @@ class FileServicePool {
       const normalized = path.resolve(repoPath);
       const service = this.pool.get(normalized);
       if (service) {
-        service.invalidateCache();
+        if (typeof service.invalidateCache === 'function') {
+          service.invalidateCache();
+        } else if (typeof service.invalidateScanCache === 'function') {
+          service.invalidateScanCache();
+        }
       }
     } else {
       for (const service of this.pool.values()) {
-        service.invalidateCache();
+        if (typeof service.invalidateCache === 'function') {
+          service.invalidateCache();
+        } else if (typeof service.invalidateScanCache === 'function') {
+          service.invalidateScanCache();
+        }
       }
     }
   }
@@ -37,7 +45,11 @@ class FileServicePool {
       const normalized = path.resolve(repoPath);
       const service = this.pool.get(normalized);
       if (service) {
-        service.invalidateCache();
+        if (typeof service.invalidateCache === 'function') {
+          service.invalidateCache();
+        } else if (typeof service.invalidateScanCache === 'function') {
+          service.invalidateScanCache();
+        }
         this.pool.delete(normalized);
       }
     }

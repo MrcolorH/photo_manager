@@ -38,7 +38,9 @@ import {
   MinusCircleOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
-  StopOutlined
+  StopOutlined,
+  ThunderboltOutlined,
+  DashboardOutlined
 } from '@ant-design/icons';
 import { importApi } from '../api';
 import { useRepo } from '../contexts/RepoContext';
@@ -53,14 +55,29 @@ const initialProgress = {
   remaining: 0,
   currentFile: '',
   estimatedTimeRemaining: 0,
-  percentage: 0
+  percentage: 0,
+  totalBytes: 0,
+  formattedTotalBytes: '0 B',
+  transferredBytes: 0,
+  formattedTransferredBytes: '0 B',
+  speed: 0,
+  formattedSpeed: '0 B/s',
+  skippedCount: 0,
+  importedCount: 0,
+  stage: 'scanning'
 };
 
 const initialMirrorProgress = {
   total: 0,
   processed: 0,
   currentFile: '',
-  percentage: 0
+  percentage: 0,
+  totalBytes: 0,
+  formattedTotalBytes: '0 B',
+  transferredBytes: 0,
+  formattedTransferredBytes: '0 B',
+  speed: 0,
+  formattedSpeed: '0 B/s'
 };
 
 const ImportPage = () => {
@@ -781,39 +798,81 @@ const ImportPage = () => {
           </div>
 
           {/* 进度统计（导入阶段） */}
-          <Row gutter={[16, 16]} style={{ marginTop: 32, marginBottom: 32 }}>
-            <Col span={6}>
+          <Row gutter={[16, 16]} style={{ marginTop: 24, marginBottom: 20 }}>
+            <Col xs={12} sm={8} md={5}>
               <Statistic
-                title="总文件数"
+                title="待处理文件"
                 value={progressInfo.total}
-                suffix="个"
+                suffix={
+                  <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 4 }}>
+                    个 {progressInfo.formattedTotalBytes && progressInfo.formattedTotalBytes !== '0 B' ? `(${progressInfo.formattedTotalBytes})` : ''}
+                  </span>
+                }
               />
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={8} md={4}>
               <Statistic
-                title="已处理"
-                value={progressInfo.processed}
-                suffix="个"
-                valueStyle={{ color: 'var(--success)' }}
+                title="已跳过历史"
+                value={progressInfo.skippedCount || 0}
+                suffix={
+                  <span style={{ fontSize: 12, color: '#52c41a', marginLeft: 4 }}>
+                    个 ⚡
+                  </span>
+                }
+                valueStyle={{ color: '#52c41a' }}
               />
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={8} md={5}>
               <Statistic
-                title="剩余"
-                value={progressInfo.remaining}
-                suffix="个"
+                title="本次新导入"
+                value={progressInfo.importedCount || 0}
+                suffix={
+                  <span style={{ fontSize: 12, color: 'var(--accent)', marginLeft: 4 }}>
+                    个 {progressInfo.formattedTransferredBytes && progressInfo.formattedTransferredBytes !== '0 B' ? `(${progressInfo.formattedTransferredBytes})` : ''}
+                  </span>
+                }
                 valueStyle={{ color: 'var(--accent)' }}
               />
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={12} md={5}>
               <Statistic
-                title="预计剩余时间"
-                value={progressInfo.estimatedTimeRemaining > 0 ? Math.ceil(progressInfo.estimatedTimeRemaining / 60) : progressInfo.total > 0 ? '< 1' : 0}
-                suffix="分钟"
-                valueStyle={{ color: 'var(--accent)' }}
+                title="实时复制速率"
+                value={
+                  taskStatus === 'paused'
+                    ? '已暂停'
+                    : progressInfo.stage === 'fast_checking' && (progressInfo.speed || 0) === 0
+                    ? '秒级快筛中 ⚡'
+                    : progressInfo.formattedSpeed || '0 B/s'
+                }
+                valueStyle={{ color: '#1677ff', fontWeight: 600 }}
+                prefix={<ThunderboltOutlined style={{ color: '#faad14' }} />}
+              />
+            </Col>
+            <Col xs={12} sm={12} md={5}>
+              <Statistic
+                title="预估剩余时间"
+                value={
+                  progressInfo.estimatedTimeRemaining > 0
+                    ? progressInfo.estimatedTimeRemaining < 60
+                      ? `${progressInfo.estimatedTimeRemaining} 秒`
+                      : `${Math.floor(progressInfo.estimatedTimeRemaining / 60)} 分 ${progressInfo.estimatedTimeRemaining % 60} 秒`
+                    : progressInfo.total > 0 && progressInfo.processed < progressInfo.total
+                    ? '计算中...'
+                    : '已完成'
+                }
+                valueStyle={{ color: 'var(--text)' }}
               />
             </Col>
           </Row>
+
+          {/* 快筛提示 */}
+          {progressInfo.skippedCount > 0 && progressInfo.processed < progressInfo.total && (
+            <div style={{ marginBottom: 20, textAlign: 'center' }}>
+              <Tag color="success" icon={<ThunderboltOutlined />} style={{ padding: '4px 12px', fontSize: 13, borderRadius: 16 }}>
+                已秒级识别并跳过 {progressInfo.skippedCount} 张历史照片（0 读卡），正在高速传输其余新增照片
+              </Tag>
+            </div>
+          )}
 
           {/* 当前处理的文件 */}
           {progressInfo.currentFile && progressInfo.total > 0 && taskPhase !== 'mirror' && (
@@ -847,11 +906,18 @@ const ImportPage = () => {
           {/* 镜像阶段进度条 */}
           {taskPhase === 'mirror' && mirrorProgress.total > 0 && (
             <div style={{ maxWidth: 600, margin: '24px auto 0' }}>
-              <div style={{ marginBottom: 8, color: 'var(--muted)', fontSize: 13 }}>
-                镜像备份中: <strong style={{ color: 'var(--text)' }}>{mirrorProgress.currentFile}</strong>
-                <span style={{ marginLeft: 8, fontSize: 12 }}>
-                  第 {mirrorProgress.processed} 个，共 {mirrorProgress.total} 个
+              <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                <span style={{ color: 'var(--muted)' }}>
+                  镜像备份中: <strong style={{ color: 'var(--text)' }}>{mirrorProgress.currentFile}</strong>
+                  <span style={{ marginLeft: 8, fontSize: 12 }}>
+                    第 {mirrorProgress.processed} 个，共 {mirrorProgress.total} 个
+                  </span>
                 </span>
+                {mirrorProgress.formattedSpeed && mirrorProgress.formattedSpeed !== '0 B/s' && (
+                  <Tag color="blue" icon={<ThunderboltOutlined />}>
+                    {mirrorProgress.formattedSpeed}
+                  </Tag>
+                )}
               </div>
               <Progress
                 percent={mirrorProgress.percentage}

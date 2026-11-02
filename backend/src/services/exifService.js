@@ -3,13 +3,19 @@
 
 const { ExifTool, exiftool } = require('exiftool-vendored');
 const fs = require('fs');
+const os = require('os');
 
 // 如果 Electron 注入了 EXIFTOOL_PATH 且文件存在，使用自定义实例
 // 解决打包后库默认路径查找失败的问题
+// 同时根据 CPU 核心数配置合理进程池（默认仅 3 个，导致大图库批量读取极慢）
 const customPath = process.env.EXIFTOOL_PATH;
-const exiftoolInstance = (customPath && fs.existsSync(customPath))
-  ? new ExifTool({ exiftoolPath: customPath })
-  : exiftool;
+const cpuCount = os.cpus()?.length || 4;
+const maxProcs = Math.min(Math.max(cpuCount, 4), 8);
+
+const exiftoolInstance = new ExifTool({
+  maxProcs,
+  ...(customPath && fs.existsSync(customPath) ? { exiftoolPath: customPath } : {})
+});
 
 // exiftool-vendored 返回的数值字段可能是带单位的字符串（如 "70 mm"、"f/4"），
 // 直接用 Number() 会得到 NaN。这里从字符串中提取第一个合法数字。

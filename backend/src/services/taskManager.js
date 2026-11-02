@@ -123,6 +123,14 @@ class TaskManager {
       throw new Error(`无法暂停状态为 ${task.status} 的任务`);
     }
     task.status = 'paused';
+    if (task.progress) {
+      task.progress.speed = 0;
+      task.progress.formattedSpeed = '0 B/s';
+    }
+    if (task.mirrorProgress) {
+      task.mirrorProgress.speed = 0;
+      task.mirrorProgress.formattedSpeed = '0 B/s';
+    }
     task.updatedAt = new Date().toISOString();
     await this._persistTask(taskId);
   }

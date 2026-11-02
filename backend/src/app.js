@@ -96,7 +96,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: '服务器内部错误' });
 });
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log(`服务器运行在 http://localhost:${PORT}`);
   // 启动时恢复上次未完成的任务（running → paused，等待用户手动恢复）
   try {
@@ -105,5 +105,10 @@ app.listen(PORT, async () => {
     console.error('[TaskManager] 启动恢复失败:', err);
   }
 });
+
+// 设置长任务超时时间（10分钟），避免大图库全量操作（重建清单/EXIF补录/校验）被 Node HTTP 默认超时中断
+server.timeout = 600000;
+server.requestTimeout = 600000;
+server.headersTimeout = 610000;
 
 module.exports = app;

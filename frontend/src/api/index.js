@@ -5,6 +5,9 @@ const api = axios.create({
   timeout: 30000
 });
 
+// 大图库批量与全量操作（如扫描、EXIF读取、完整性校验、清单重建）设置 10 分钟长超时，防止被 30s 默认超时切断
+const LONG_TIMEOUT = 600000;
+
 // 照片相关API
 export const photoApi = {
   // 获取照片列表
@@ -20,7 +23,7 @@ export const photoApi = {
   deletePhoto: (id, syncRaw = true, repoId) => api.delete(`/photos/${id}`, { params: { syncRaw, repoId } }),
 
   // 批量删除RAW文件
-  batchDeleteRaws: (fileIds, repoId) => api.post('/photos/batch-delete-raws', { fileIds, repoId }),
+  batchDeleteRaws: (fileIds, repoId) => api.post('/photos/batch-delete-raws', { fileIds, repoId }, { timeout: LONG_TIMEOUT }),
 
   // 预览图片
   getPreviewUrl: (id) => `/uploads/photos/${id}/preview`,
@@ -30,7 +33,7 @@ export const photoApi = {
 
   // 批量导出照片
   batchExport: (fileIds, targetPath, repoId) =>
-    api.post('/photos/batch-export', { fileIds, targetPath, repoId }),
+    api.post('/photos/batch-export', { fileIds, targetPath, repoId }, { timeout: LONG_TIMEOUT }),
 
   // 获取高级筛选项（相机/镜头列表）
   getFilterOptions: (repoId, category) =>
@@ -41,21 +44,21 @@ export const photoApi = {
 
   // 校验仓库完整性；autoCleanup=true 时自动从清单移除缺失条目
   verifyIntegrity: (repoId, autoCleanup = false) =>
-    api.post('/photos/verify-integrity', { repoId, autoCleanup }),
+    api.post('/photos/verify-integrity', { repoId, autoCleanup }, { timeout: LONG_TIMEOUT }),
 
   // 批量刷新已有文件的 EXIF（补录旧版导入缺失的 EXIF）
   refreshExif: (repoId, category = 'jpg') =>
-    api.post('/photos/refresh-exif', { repoId, category }),
+    api.post('/photos/refresh-exif', { repoId, category }, { timeout: LONG_TIMEOUT }),
 
   // 重建清单：删除旧清单→重新扫描→读取 EXIF
   rebuildManifest: (repoId) =>
-    api.post('/photos/rebuild-manifest', { repoId }),
+    api.post('/photos/rebuild-manifest', { repoId }, { timeout: LONG_TIMEOUT }),
 
   // 获取缩略图缓存统计
   getCacheStats: (repoId) => api.get('/photos/cache-stats', { params: { repoId } }),
 
   // 清空仓库缩略图缓存
-  clearCache: (repoId) => api.post('/photos/clear-cache', { repoId }),
+  clearCache: (repoId) => api.post('/photos/clear-cache', { repoId }, { timeout: LONG_TIMEOUT }),
 
   // 预热缩略图
   preloadThumbnails: (repoId, options = {}) =>
@@ -68,7 +71,7 @@ export const photoApi = {
   cancelPreload: (repoId) => api.post('/photos/cancel-preload', { repoId }),
 
   // 显式同步未追踪文件
-  syncFiles: (repoId) => api.post('/photos/sync-files', { repoId })
+  syncFiles: (repoId) => api.post('/photos/sync-files', { repoId }, { timeout: LONG_TIMEOUT })
 };
 
 // 设置相关API

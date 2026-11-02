@@ -95,8 +95,19 @@ async function copyFile(src, dest) {
     return { path: dest, skipped: true, reason: 'file_exists' };
   }
   
+  // 获取源文件时间戳与属性
+  const stat = await fs.stat(src);
+
   // 文件不存在，执行复制
   await fs.copyFile(src, dest);
+
+  // 保持与源文件一致的时间戳，避免跨盘复制时间戳脱节
+  try {
+    await fs.utimes(dest, stat.atime, stat.mtime);
+  } catch {
+    // 忽略部分外部文件系统不支持 utimes 的异常
+  }
+
   return { path: dest, skipped: false };
 }
 
@@ -126,7 +137,7 @@ async function fileExists(filePath) {
   }
 }
 
-// 比较两个文件是否相同（通过文件大小和修改时间）
+// 比较两个文件是否相同（通过文件大小；同名媒体文件大小一致即判定相同）
 async function isSameFile(srcPath, destPath) {
   try {
     const [srcStats, destStats] = await Promise.all([
@@ -134,9 +145,8 @@ async function isSameFile(srcPath, destPath) {
       fs.stat(destPath)
     ]);
     
-    // 如果文件大小相同且修改时间相同，认为是同一个文件
-    return srcStats.size === destStats.size && 
-           srcStats.mtimeMs === destStats.mtimeMs;
+    // 文件大小相同即判定为同一文件
+    return srcStats.size === destStats.size;
   } catch {
     return false;
   }

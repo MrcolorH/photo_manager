@@ -1,6 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { scanDirectory, ensureDir } = require('../utils/fileUtils');
+const { scanDirectory, ensureDir, fileExists } = require('../utils/fileUtils');
 
 // 仓库清单服务：为每个仓库维护 repo/.shiguang/manifest.json，
 // 作为后续哈希去重、EXIF 筛选、归档的统一数据源
@@ -187,13 +187,18 @@ class ManifestService {
     return await this.load();
   }
 
-  // 同步文件系统中未被清单追踪的文件：扫描 jpg/raw/video 目录，
-  // 对不在清单中的文件添加条目（hash: null, exif: 从文件读取）
-  // 解决清单与文件系统不一致导致照片浏览缺失的问题
-  async _syncUntrackedFiles() {
+  // 双向同步文件系统与清单：
+  // 1. 扫描 jpg/raw/video 目录，将未被清单追踪的新增文件加入清单（hash: null, exif: 从文件读取）
+  // 2. 检查清单已有文件，将磁盘上已被删除的失效条目安全剔除（Prune missing files）
+  // 彻底解决外部删除后图库残留“空文件”以及新文件无法显示的问题
+  async _syncUntrackedFiles(options = {}) {
+    const { pruneMissing = true } = options;
     const { readKeyExif } = require('./exifService');
     const categories = ['jpg', 'raw', 'video'];
     let added = 0;
+    let pruned = 0;
+
+    const diskRelPaths = new Set();
 
     for (const category of categories) {
       const categoryPath = path.join(this.basePath, category);
@@ -206,6 +211,8 @@ class ManifestService {
 
       for (const file of files) {
         const relPath = this._normalizeRelPath(path.relative(this.basePath, file.path));
+        diskRelPaths.add(relPath);
+
         const existingEntry = await this.getEntry(relPath);
         if (existingEntry) continue;
 
@@ -229,10 +236,30 @@ class ManifestService {
       }
     }
 
-    if (added > 0) {
-      await this.save();
-      console.log(`[Manifest] 同步发现 ${added} 个未追踪文件，已添加到清单`);
+    // 清理磁盘上已不存在的条目
+    if (pruneMissing) {
+      const manifest = await this.load();
+      const currentKeys = Object.keys(manifest.files || {});
+      for (const relPath of currentKeys) {
+        // 只对受管理的分类目录进行死链清理，避免影响其他可能存在的内部元数据
+        const isManagedCategory = categories.some(cat => relPath.startsWith(`${cat}/`));
+        if (isManagedCategory && !diskRelPaths.has(relPath)) {
+          const absPath = path.join(this.basePath, relPath);
+          const exists = await fileExists(absPath);
+          if (!exists) {
+            await this.removeEntry(relPath);
+            pruned++;
+          }
+        }
+      }
     }
+
+    if (added > 0 || pruned > 0) {
+      await this.save();
+      console.log(`[Manifest] 双向同步完成：发现新增 ${added} 个文件，清理失效 ${pruned} 个文件`);
+    }
+
+    return { added, pruned };
   }
 
   // 返回 files 对象（供 getPhotos 使用）
@@ -241,10 +268,9 @@ class ManifestService {
     return manifest.files;
   }
 
-  // 显式同步文件系统中的未追踪文件
-  async syncUntrackedFiles() {
-    await this._syncUntrackedFiles();
-    return await this.load();
+  // 显式同步文件系统中的未追踪与已删除文件
+  async syncUntrackedFiles(options = {}) {
+    return await this._syncUntrackedFiles(options);
   }
 
   // 清空内存缓存

@@ -18,19 +18,132 @@ async function runWithConcurrency(items, concurrency, asyncFn) {
   await Promise.all(workers);
 }
 
-// 构建导入阶段进度对象
-function _buildProgress(totalFiles, processedFiles, currentFile, startTime) {
-  const elapsedTime = (Date.now() - startTime) / 1000;
-  const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
-  const remainingFiles = totalFiles - processedFiles;
-  const estimatedTimeRemaining = avgTimePerFile * remainingFiles;
+// 格式化字节数
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+// 实时速率追踪器（滑动窗口 + EMA 指数加权移动平均）
+class SpeedTracker {
+  constructor(windowMs = 1500) {
+    this.windowMs = windowMs;
+    this.samples = []; // { time, bytes }
+    this.lastSpeed = 0;
+    this.alpha = 0.35; // 平滑因子
+  }
+
+  record(bytes) {
+    if (!bytes || bytes <= 0) return;
+    const now = Date.now();
+    this.samples.push({ time: now, bytes });
+    this._clean(now);
+  }
+
+  _clean(now) {
+    const cutoff = now - this.windowMs;
+    while (this.samples.length > 0 && this.samples[0].time < cutoff) {
+      this.samples.shift();
+    }
+  }
+
+  getSpeed() {
+    const now = Date.now();
+    this._clean(now);
+    if (this.samples.length < 2) {
+      if (this.samples.length === 1 && now - this.samples[0].time > 1500) {
+        this.lastSpeed = 0;
+        return 0;
+      }
+      return this.lastSpeed;
+    }
+
+    const duration = (this.samples[this.samples.length - 1].time - this.samples[0].time) / 1000;
+    if (duration <= 0.05) return this.lastSpeed;
+
+    let bytesInWindow = 0;
+    for (let i = 1; i < this.samples.length; i++) {
+      bytesInWindow += this.samples[i].bytes;
+    }
+
+    const rawSpeed = bytesInWindow / duration;
+    const smoothSpeed = this.lastSpeed > 0
+      ? this.alpha * rawSpeed + (1 - this.alpha) * this.lastSpeed
+      : rawSpeed;
+
+    this.lastSpeed = smoothSpeed;
+    return Math.round(smoothSpeed);
+  }
+
+  getFormattedSpeed() {
+    const speed = this.getSpeed();
+    if (speed <= 0) return '0 B/s';
+    return `${formatBytes(speed)}/s`;
+  }
+}
+
+// 构建导入阶段进度对象（支持对象参数与位置参数兼容）
+function _buildProgress(arg1, arg2, arg3, arg4) {
+  let opts;
+  if (typeof arg1 === 'object' && arg1 !== null) {
+    opts = arg1;
+  } else {
+    opts = {
+      totalFiles: arg1,
+      processedFiles: arg2,
+      currentFile: arg3,
+      startTime: arg4
+    };
+  }
+
+  const {
+    totalFiles = 0,
+    processedFiles = 0,
+    currentFile = '',
+    startTime = Date.now(),
+    totalBytes = 0,
+    transferredBytes = 0,
+    skippedCount = 0,
+    importedCount = 0,
+    speedTracker = null,
+    stage = 'transferring'
+  } = opts;
+
+  const speed = speedTracker ? speedTracker.getSpeed() : 0;
+  const formattedSpeed = speedTracker ? speedTracker.getFormattedSpeed() : '0 B/s';
+
+  // 剩余时间估算：优先以 (剩余未传字节数 / 实时速度) 计算
+  let estimatedTimeRemaining = 0;
+  const remainingBytes = Math.max(0, totalBytes - transferredBytes);
+  if (speed > 1024 && remainingBytes > 0) {
+    estimatedTimeRemaining = Math.ceil(remainingBytes / speed);
+  } else {
+    const elapsedTime = (Date.now() - startTime) / 1000;
+    const avgTimePerFile = processedFiles > 0 ? elapsedTime / processedFiles : 0;
+    const remainingFiles = Math.max(0, totalFiles - processedFiles);
+    estimatedTimeRemaining = Math.round(avgTimePerFile * remainingFiles);
+  }
+
   return {
     total: totalFiles,
     processed: processedFiles,
-    remaining: remainingFiles,
-    currentFile: currentFile,
-    estimatedTimeRemaining: Math.round(estimatedTimeRemaining),
-    percentage: Math.round((processedFiles / totalFiles) * 100)
+    remaining: Math.max(0, totalFiles - processedFiles),
+    currentFile: currentFile || '',
+    estimatedTimeRemaining,
+    percentage: totalFiles > 0 ? Math.round((processedFiles / totalFiles) * 100) : 0,
+    // 扩展实时速率与数据量统计指标
+    totalBytes,
+    formattedTotalBytes: formatBytes(totalBytes),
+    transferredBytes,
+    formattedTransferredBytes: formatBytes(transferredBytes),
+    speed,
+    formattedSpeed,
+    skippedCount,
+    importedCount,
+    stage
   };
 }
 
@@ -113,6 +226,11 @@ class FileService {
     this.manifest.invalidateCache();
   }
 
+  // 使整个仓库的服务缓存与清单缓存失效（提供统一接口名）
+  invalidateCache() {
+    this.invalidateScanCache();
+  }
+
   // 初始化分类目录
   async initCategories() {
     const categories = ['jpg', 'raw', 'video'];
@@ -190,32 +308,55 @@ class FileService {
     await this.initCategories();
 
     const totalFiles = files.length;
+    const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
     let processedFiles = 0;
     const startTime = Date.now();
+    const speedTracker = new SpeedTracker();
+    let transferredBytes = 0;
+    let skippedCount = 0;
+    let importedCount = 0;
+
+    // 预加载清单文件字典并建立内存级极速反查索引（用于秒级短路，0 字节读卡）
+    const allFiles = await this.manifest.getAllFiles();
+    const existingByNameAndSize = new Map();
+    for (const [relPath, entry] of Object.entries(allFiles || {})) {
+      if (!entry) continue;
+      const baseName = path.basename(relPath);
+      const key = `${baseName}_${entry.size}`;
+      existingByNameAndSize.set(key, { relPath, ...entry });
+    }
 
     // 如果没有文件，立即返回结果
     if (totalFiles === 0) {
       console.log('没有找到媒体文件，导入结束');
-      pushProgress({
-        total: 0,
-        processed: 0,
-        remaining: 0,
+      pushProgress(_buildProgress({
+        totalFiles: 0,
+        processedFiles: 0,
         currentFile: '',
-        estimatedTimeRemaining: 0,
-        percentage: 100
-      });
+        startTime,
+        totalBytes: 0,
+        transferredBytes: 0,
+        skippedCount: 0,
+        importedCount: 0,
+        speedTracker,
+        stage: 'completed'
+      }));
       return results;
     }
 
     // 发送初始进度
-    pushProgress({
-      total: totalFiles,
-      processed: 0,
-      remaining: totalFiles,
+    pushProgress(_buildProgress({
+      totalFiles,
+      processedFiles: 0,
       currentFile: '准备开始...',
-      estimatedTimeRemaining: 0,
-      percentage: 0
-    });
+      startTime,
+      totalBytes,
+      transferredBytes: 0,
+      skippedCount: 0,
+      importedCount: 0,
+      speedTracker,
+      stage: 'scanning'
+    }));
 
     // 智能命名：按子文件夹分组，使用每个文件的最后一级文件夹名称作为前缀
     const folderCounters = {};  // 每个子文件夹独立计数器
@@ -256,143 +397,196 @@ class FileService {
       return candidate;
     };
 
-    // 按类型分类处理文件（并发，IO 密集型，并发度 8）
-    const IMPORT_CONCURRENCY = 8;
+    // 按类型分类处理文件（并发度控制在 4，保护闪存总线吞吐）
+    const IMPORT_CONCURRENCY = 4;
     await runWithConcurrency(files, IMPORT_CONCURRENCY, async (file) => {
       try {
-        // 任务恢复时跳过已处理文件（避免重复计算 hash 和复制）
-        // 注意：这里先计算 hash 用于判断是否已处理
         await checkCancel();
 
-        // 1. 计算 SHA-256 哈希
-        const hash = await computeFileHash(file.path);
+        // 1. 快速检查已导入历史 (零 I/O 短路机制，0 字节读卡)
+        // A. 按文件名 + 尺寸反查清单
+        const nameSizeKey = `${file.name}_${file.size}`;
+        const fastMatch = existingByNameAndSize.get(nameSizeKey);
 
-        // 任务恢复优化：若本次任务已处理过该 hash，直接跳过
-        if (taskCtx && taskCtx.wasProcessed(hash)) {
+        if (fastMatch) {
           results.skipped.push({
             originalPath: file.path,
             name: file.name,
             size: file.size,
-            reason: 'already_processed_in_task',
-            hash: hash
+            reason: 'duplicate_fast',
+            hash: fastMatch.hash || null,
+            existingRelPath: fastMatch.relPath
           });
-          // 推进进度计数
+          skippedCount++;
           processedFiles++;
-          pushProgress(_buildProgress(totalFiles, processedFiles, file.name, startTime));
+          pushProgress(_buildProgress({
+            totalFiles,
+            processedFiles,
+            currentFile: file.name,
+            startTime,
+            totalBytes,
+            transferredBytes,
+            skippedCount,
+            importedCount,
+            speedTracker,
+            stage: 'fast_checking'
+          }));
+          if (taskCtx && fastMatch.hash) taskCtx.recordProcessedHash(fastMatch.hash);
           return;
         }
 
-        // 2. 哈希去重：命中清单则跳过
-        const existed = await this.manifest.findByHash(hash);
-        if (existed) {
-          results.skipped.push({
-            originalPath: file.path,
-            name: file.name,
-            size: file.size,
-            reason: 'duplicate_hash',
-            hash: hash,
-            existingRelPath: existed.relPath
-          });
-        } else {
-          // 3. 未命中：确定归档相对路径（基于 smartNaming 后的最终文件名）
-          const targetFileName = getSmartName(file);
-          const mtimeIso = new Date(file.modifiedTime).toISOString();
+        // B. 若为常规导入 (无 smartNaming 且无 EXIF 归档)，直接检查目标文件系统是否存在
+        if (!smartNaming && !archiveByExif) {
+          const directTargetPath = path.join(this.basePath, file.type, file.name);
+          try {
+            const stat = await fs.stat(directTargetPath);
+            if (stat.size === file.size) {
+              const relPath = `${file.type}/${file.name}`;
+              results.skipped.push({
+                originalPath: file.path,
+                newPath: directTargetPath,
+                name: file.name,
+                size: file.size,
+                reason: 'duplicate_fast',
+                existingRelPath: relPath
+              });
+              skippedCount++;
+              processedFiles++;
+              pushProgress(_buildProgress({
+                totalFiles,
+                processedFiles,
+                currentFile: file.name,
+                startTime,
+                totalBytes,
+                transferredBytes,
+                skippedCount,
+                importedCount,
+                speedTracker,
+                stage: 'fast_checking'
+              }));
+              return;
+            }
+          } catch {
+            // 目标文件不存在，继续执行新文件导入流程
+          }
+        }
 
-          // 先读取 EXIF（归档路径依赖 EXIF 时间），异常时 exif=null，不阻断
-          let exif = null;
+        // 2. 未命中快筛：确认为新文件，按需读取 EXIF 并计算归档路径
+        const targetFileName = getSmartName(file);
+        const mtimeIso = new Date(file.modifiedTime).toISOString();
+
+        let exif = null;
+        if (file.type === 'jpg' || file.type === 'raw') {
           try {
             exif = await readKeyExif(file.path);
           } catch (e) {
             console.error(`  读取 EXIF 异常: ${file.name}`, e.message);
           }
+        }
 
-          const relPath = this.getArchiveRelativePath(
+        const relPath = this.getArchiveRelativePath(
             targetFileName,
             exif,
             mtimeIso,
             file.type,
             archiveByExif
-          );
+        );
 
-          // 4. 检查目标路径是否已存在
-          const targetPath = path.join(this.basePath, relPath);
+        const targetPath = path.join(this.basePath, relPath);
 
-          // 兜底去重：若目标路径已存在，比对哈希判断是否为相同内容
-          let isDuplicateAtTarget = false;
-          if (await fileExists(targetPath)) {
-            try {
-              const existingHash = await computeFileHash(targetPath);
-              if (existingHash === hash) {
-                isDuplicateAtTarget = true;
-              }
-            } catch (e) {
-              console.error(`  计算已存在文件哈希失败: ${targetPath}`, e.message);
-            }
-          }
-
-          if (isDuplicateAtTarget) {
-            results.skipped.push({
-              originalPath: file.path,
-              newPath: targetPath,
-              name: smartNaming ? targetFileName : file.name,
-              size: file.size,
-              reason: 'duplicate_hash',
-              hash: hash,
-              existingRelPath: relPath
-            });
-            // 补全清单条目（若之前 hash 为 null 或不存在），后续可正常去重
-            const existingEntry = await this.manifest.getEntry(relPath);
-            if (!existingEntry || !existingEntry.hash) {
-              await this.manifest.addEntry(relPath, {
-                hash: hash,
-                size: file.size,
-                mtime: mtimeIso,
-                exif: exif
-              });
-            }
-            // 记录已处理 hash（恢复时跳过）
-            if (taskCtx) taskCtx.recordProcessedHash(hash);
-          } else {
-            // 5. 目标路径不存在或内容不同：自动重命名避免覆盖，再复制
-            const finalTargetPath = await resolveAvailablePath(targetPath);
-            const finalRelPath = path.relative(this.basePath, finalTargetPath).replace(/\\/g, '/');
-
-            // 复制前再次检查取消
-            await checkCancel();
-
-            // 6. 复制文件到主仓库
-            const copyResult = await copyFile(file.path, finalTargetPath);
-
-            if (copyResult.skipped) {
+        // 3. 避免覆盖冲突与兜底跳过：若目标路径已存在同名且同大小的文件，直接认定为已导入，跳过（绝不生成 -1 副本）
+        if (await fileExists(targetPath)) {
+          try {
+            const stat = await fs.stat(targetPath);
+            if (stat.size === file.size) {
               results.skipped.push({
                 originalPath: file.path,
-                newPath: copyResult.path,
+                newPath: targetPath,
                 name: smartNaming ? targetFileName : file.name,
                 size: file.size,
-                reason: copyResult.reason || 'already_exists'
+                reason: 'duplicate_target_exists',
+                existingRelPath: relPath
               });
-            } else {
-              // 7. 文件成功复制，记录到清单
-              await this.manifest.addEntry(finalRelPath, {
-                hash: hash,
-                size: file.size,
-                mtime: mtimeIso,
-                exif: exif
-              });
-
-              results[file.type].push({
-                originalPath: file.path,
-                newPath: copyResult.path,
-                relPath: finalRelPath,
-                name: smartNaming ? targetFileName : file.name,
-                size: file.size,
-                hash: hash,
-                exif: exif
-              });
+              skippedCount++;
+              processedFiles++;
+              pushProgress(_buildProgress({
+                totalFiles,
+                processedFiles,
+                currentFile: file.name,
+                startTime,
+                totalBytes,
+                transferredBytes,
+                skippedCount,
+                importedCount,
+                speedTracker,
+                stage: 'fast_checking'
+              }));
+              return;
             }
-            // 记录已处理 hash（恢复时跳过）
-            if (taskCtx) taskCtx.recordProcessedHash(hash);
+          } catch {
+            // 异常则走冲突重命名兜底
           }
+        }
+
+        const finalTargetPath = await resolveAvailablePath(targetPath);
+        const finalRelPath = path.relative(this.basePath, finalTargetPath).replace(/\\/g, '/');
+
+        // 复制前再次检查取消
+        await checkCancel();
+
+        // 4. 复制文件到主仓库
+        const copyResult = await copyFile(file.path, finalTargetPath);
+
+        if (copyResult.skipped) {
+          results.skipped.push({
+            originalPath: file.path,
+            newPath: copyResult.path,
+            name: smartNaming ? targetFileName : file.name,
+            size: file.size,
+            reason: copyResult.reason || 'already_exists'
+          });
+          skippedCount++;
+        } else {
+          // 传输成功：累计传输字节与速率
+          transferredBytes += file.size;
+          speedTracker.record(file.size);
+          importedCount++;
+
+          // 5. 延迟在本地 NVMe SSD 上计算哈希（相比直接从存储卡读卡计算快 50 倍以上）
+          let hash = null;
+          try {
+            hash = await computeFileHash(finalTargetPath);
+          } catch (e) {
+            console.error(`  计算哈希失败: ${finalTargetPath}`, e.message);
+          }
+
+          // 6. 记录到清单
+          await this.manifest.addEntry(finalRelPath, {
+            hash: hash,
+            size: file.size,
+            mtime: mtimeIso,
+            exif: exif
+          });
+
+          // 同步维护本地快速索引
+          existingByNameAndSize.set(`${path.basename(finalRelPath)}_${file.size}`, {
+            relPath: finalRelPath,
+            hash,
+            size: file.size,
+            mtime: mtimeIso
+          });
+
+          results[file.type].push({
+            originalPath: file.path,
+            newPath: copyResult.path,
+            relPath: finalRelPath,
+            name: smartNaming ? targetFileName : file.name,
+            size: file.size,
+            hash: hash,
+            exif: exif
+          });
+
+          if (taskCtx && hash) taskCtx.recordProcessedHash(hash);
         }
       } catch (error) {
         // CancelError 向上传播，不归入 errors
@@ -404,9 +598,20 @@ class FileService {
         console.error(`  文件处理失败: ${file.name}`, error.message);
       }
 
-      // 更新进度（processedFiles++ 在单线程下是原子的）
+      // 更新进度
       processedFiles++;
-      pushProgress(_buildProgress(totalFiles, processedFiles, file.name, startTime));
+      pushProgress(_buildProgress({
+        totalFiles,
+        processedFiles,
+        currentFile: file.name,
+        startTime,
+        totalBytes,
+        transferredBytes,
+        skippedCount,
+        importedCount,
+        speedTracker,
+        stage: 'transferring'
+      }));
     });
 
     // 统一保存清单
@@ -421,16 +626,26 @@ class FileService {
         ...results.video
       ];
 
+      const mirrorTotalBytes = allImported.reduce((sum, item) => sum + (item.size || 0), 0);
+      let mirrorTransferredBytes = 0;
+      const mirrorSpeedTracker = new SpeedTracker();
+
       // 推送镜像阶段初始进度
       pushMirrorProgress({
         total: allImported.length,
         processed: 0,
         currentFile: '准备开始镜像备份...',
-        percentage: 0
+        percentage: 0,
+        speed: 0,
+        formattedSpeed: '0 B/s',
+        totalBytes: mirrorTotalBytes,
+        formattedTotalBytes: formatBytes(mirrorTotalBytes),
+        transferredBytes: 0,
+        formattedTransferredBytes: '0 B'
       });
 
       let mirroredCount = 0;
-      await runWithConcurrency(allImported, IMPORT_CONCURRENCY, async (item) => {
+      await runWithConcurrency(allImported, 4, async (item) => {
         // 镜像阶段也支持暂停/取消
         await checkCancel();
 
@@ -439,6 +654,14 @@ class FileService {
           const mirrorTarget = path.join(mirrorPath, item.relPath);
           await ensureDir(path.dirname(mirrorTarget));
           await fs.copyFile(item.newPath, mirrorTarget);
+          try {
+            const st = await fs.stat(item.newPath);
+            await fs.utimes(mirrorTarget, st.atime, st.mtime);
+          } catch {}
+
+          mirrorTransferredBytes += item.size || 0;
+          mirrorSpeedTracker.record(item.size || 0);
+
           results.mirrorSuccess.push({
             originalPath: item.originalPath,
             newPath: item.newPath,
@@ -462,7 +685,13 @@ class FileService {
           total: allImported.length,
           processed: mirroredCount,
           currentFile: item.relPath || item.name || '',
-          percentage: Math.round((mirroredCount / allImported.length) * 100)
+          percentage: Math.round((mirroredCount / allImported.length) * 100),
+          speed: mirrorSpeedTracker.getSpeed(),
+          formattedSpeed: mirrorSpeedTracker.getFormattedSpeed(),
+          totalBytes: mirrorTotalBytes,
+          formattedTotalBytes: formatBytes(mirrorTotalBytes),
+          transferredBytes: mirrorTransferredBytes,
+          formattedTransferredBytes: formatBytes(mirrorTransferredBytes)
         });
       });
     }
@@ -564,9 +793,41 @@ class FileService {
     const end = start + pageSize;
     const paginatedPhotos = photos.slice(start, end);
 
+    // 对当前页照片进行轻量物理存在性探活（Lazy Prune，仅需 1~3ms）
+    // 彻底解决外部删除照片后浏览相册残留“空文件/破图卡片”的问题
+    const checkResults = await Promise.all(
+      paginatedPhotos.map(async (photo) => ({
+        photo,
+        exists: await fileExists(photo.path)
+      }))
+    );
+
+    const validPhotos = [];
+    const missingPhotos = [];
+    for (const item of checkResults) {
+      if (item.exists) {
+        validPhotos.push(item.photo);
+      } else {
+        missingPhotos.push(item.photo);
+      }
+    }
+
+    if (missingPhotos.length > 0) {
+      let removedCount = 0;
+      for (const missing of missingPhotos) {
+        if (await this.manifest.removeEntry(missing.relativePath)) {
+          removedCount++;
+        }
+      }
+      if (removedCount > 0) {
+        this.manifest.save().catch(err => console.error('[getPhotos] 保存清单自愈记录失败:', err));
+        this.invalidateScanCache();
+      }
+    }
+
     return {
-      photos: paginatedPhotos,
-      total,
+      photos: validPhotos,
+      total: Math.max(0, total - missingPhotos.length),
       page,
       pageSize
     };
@@ -674,8 +935,9 @@ class FileService {
     await this.manifest.initFromScan();
     const allFiles = await this.manifest.getAllFiles();
 
-    // 1. 遍历清单，检查每个文件的存在性与哈希
-    for (const relPath of Object.keys(allFiles)) {
+    // 1. 遍历清单，并发检查每个文件的存在性与哈希
+    const relPaths = Object.keys(allFiles);
+    await runWithConcurrency(relPaths, 16, async (relPath) => {
       const entry = allFiles[relPath];
       const absPath = path.join(this.basePath, relPath);
 
@@ -685,7 +947,7 @@ class FileService {
           path: absPath,
           reason: 'file_missing'
         });
-        continue;
+        return;
       }
 
       // 清单中 hash=null 的旧文件只检查存在性，跳过哈希校验
@@ -710,7 +972,7 @@ class FileService {
           });
         }
       }
-    }
+    });
 
     // 2. 扫描文件系统 jpg/raw/video 目录，找出不在清单中的文件
     const categories = ['jpg', 'raw', 'video'];
@@ -765,10 +1027,6 @@ class FileService {
     // 解码ID获取路径
     const photoPath = Buffer.from(photoId, 'base64').toString('utf8');
 
-    if (!await fileExists(photoPath)) {
-      throw new Error('照片不存在');
-    }
-
     const filename = path.basename(photoPath);
     const filenameWithoutExt = getFileNameWithoutExt(filename);
     const type = getFileType(path.extname(filename));
@@ -780,11 +1038,16 @@ class FileService {
     // 相对仓库根的 forward-slash 路径（清单 key 格式）
     const toRelPath = (absPath) => path.relative(this.basePath, absPath).replace(/\\/g, '/');
 
-    // 删除主文件
-    if (await deleteFile(photoPath)) {
-      deletedFiles.push(photoPath);
+    const exists = await fileExists(photoPath);
+
+    // 物理存在则删除物理文件
+    if (exists) {
+      if (await deleteFile(photoPath)) {
+        deletedFiles.push(photoPath);
+      }
     }
-    // 同步移除主文件的清单条目
+
+    // 无论主文件物理是否存在，都同步移除清单条目（容错清理外部已删除文件的残留死链）
     {
       const relPath = toRelPath(photoPath);
       if (await this.manifest.removeEntry(relPath)) {
@@ -848,7 +1111,8 @@ class FileService {
     return {
       success: true,
       deletedFiles,
-      removedEntries
+      removedEntries,
+      alreadyMissing: !exists
     };
   }
 
@@ -1071,6 +1335,8 @@ class FileService {
     };
 
     const relPaths = Object.keys(allFiles);
+    const needRefreshList = [];
+
     for (const relPath of relPaths) {
       // 若指定了分类，只处理该分类
       if (category) {
@@ -1085,11 +1351,19 @@ class FileService {
         continue;
       }
 
+      needRefreshList.push({ relPath, entry });
+    }
+
+    results.total = results.alreadyHasExif + needRefreshList.length;
+
+    // 并发读取 EXIF 并更新条目
+    const EXIF_CONCURRENCY = 8;
+    await runWithConcurrency(needRefreshList, EXIF_CONCURRENCY, async ({ relPath, entry }) => {
       const absPath = path.join(this.basePath, relPath);
       if (!await fileExists(absPath)) {
         results.failed++;
         if (!results.firstError) results.firstError = `${relPath}: 文件不存在`;
-        continue;
+        return;
       }
 
       results.processed++;
@@ -1119,7 +1393,7 @@ class FileService {
         results.failed++;
         if (!results.firstError) results.firstError = `${relPath}: ${error.message}`;
       }
-    }
+    });
 
     if (results.processed > 0) {
       await this.manifest.save();
@@ -1153,7 +1427,7 @@ class FileService {
     }
 
     // 3. 并发写入清单条目，同时读取 EXIF（仅 jpg/raw）
-    const EXIF_CONCURRENCY = 6;
+    const EXIF_CONCURRENCY = 8;
     let exifSuccess = 0;
     let exifFailed = 0;
     await runWithConcurrency(allScannedFiles, EXIF_CONCURRENCY, async ({ relPath, file, category }) => {
