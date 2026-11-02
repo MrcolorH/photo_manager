@@ -3,12 +3,38 @@ const fsSync = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const pLimit = require('p-limit');
 const sharp = require('sharp');
 const { spawn } = require('child_process');
 const { generateRawThumbnail } = require('../utils/rawThumbnail');
 
 const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
+
+// 轻量级原生并发限制器（零外部依赖，确保打包环境绝对可用）
+function createConcurrencyLimiter(concurrency) {
+  const queue = [];
+  let activeCount = 0;
+
+  const next = () => {
+    if (activeCount < concurrency && queue.length > 0) {
+      activeCount++;
+      const { fn, resolve, reject } = queue.shift();
+      Promise.resolve()
+        .then(() => fn())
+        .then(resolve, reject)
+        .finally(() => {
+          activeCount--;
+          next();
+        });
+    }
+  };
+
+  return function limit(fn) {
+    return new Promise((resolve, reject) => {
+      queue.push({ fn, resolve, reject });
+      next();
+    });
+  };
+}
 
 // 格式化字节数工具函数
 function formatBytes(bytes) {
@@ -28,7 +54,7 @@ class ThumbnailCacheService {
   constructor() {
     // 限制 sharp/ffmpeg 等繁重转码任务并发数，防止占满 Node 事件循环与 CPU
     const concurrency = Math.max(2, Math.floor((os.cpus() || []).length / 2) || 2);
-    this.limit = pLimit(concurrency);
+    this.limit = createConcurrencyLimiter(concurrency);
 
     // 缓存目录解析结果缓存 (repoBasePath -> cacheDir)
     this._dirCache = new Map();
